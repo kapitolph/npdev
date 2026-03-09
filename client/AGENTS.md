@@ -68,25 +68,7 @@ This creates `~/.npdev/config` and symlinks the `npdev` CLI to `~/.local/bin/npd
 
 If `~/.local/bin` is not in your PATH, the script will tell you how to add it.
 
-## Step 4: Test Connection
-
-**Pause here.** Tell me:
-
-> "Your public key needs to be added to the VPS. Either commit it to `keys/<your-name>.pub` and have an admin re-run `server/setup.sh`, or ask the admin to add it manually. Once confirmed, tell me and I'll test the connection."
-
-Once I confirm, test:
-
-```bash
-npdev list
-```
-
-If the connection times out or is refused, suggest:
-- Verify the VPS is running
-- Check if a firewall or corporate VPN is blocking port 22
-- Confirm the key was added to the server's `authorized_keys`
-- If using a passphrase, ensure the key is loaded: `ssh-add -l`
-
-## Step 5: Commit Public Key
+## Step 4: Commit Public Key
 
 Copy the public key into the repo so it's tracked and future `server/setup.sh` runs import it automatically.
 
@@ -99,16 +81,36 @@ git commit -m "chore: add <name> SSH public key"
 git push
 ```
 
+## Step 5: Get Key Synced to VPS
+
+**Pause here.** Tell the developer:
+
+> "Your key has been pushed to the repo. Ask a teammate who already has VPS access to run `npdev sync-keys` — this pulls your public key from GitHub and adds it to the server. Once they confirm it's done, tell me and I'll test the connection."
+
+## Step 6: Test Connection
+
+Once the developer confirms the key has been synced, test:
+
+```bash
+npdev list
+```
+
+If the connection times out or is refused, suggest:
+- Verify the VPS is running
+- Check if a firewall or corporate VPN is blocking port 22
+- Confirm someone ran `npdev sync-keys` after the key was pushed
+- If using a passphrase, ensure the key is loaded: `ssh-add -l`
+
 ## Summary
 
 After completing all steps, print a concise summary:
 
 ```
-✓ SSH key:      ~/.ssh/vps/id_vps_ed25519
+✓ SSH key:      ~/.ssh/vps/id_<name>_ed25519
 ✓ SSH config:   Host entries for all machines in machines.yaml
 ✓ npdev CLI:    installed at ~/.local/bin/npdev
-✓ Connection:   Tested OK
 ✓ Public key:   Committed to keys/<name>.pub
+✓ Connection:   Tested OK
 
 Quick reference:
   npdev                     → Quick shell on VPS
