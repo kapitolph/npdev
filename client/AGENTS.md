@@ -20,12 +20,13 @@ First, check if I already have SSH key pairs (`~/.ssh/id_ed25519.pub`, `~/.ssh/v
 
 If generating a new key:
 1. Create the directory: `mkdir -p ~/.ssh/vps && chmod 700 ~/.ssh/vps`
-2. Ask me for my **email address** (suggest `firstname@nextfinancial.io` as the format)
-3. Generate with: `ssh-keygen -t ed25519 -C "<my-email>" -f ~/.ssh/vps/id_vps_ed25519`
+2. Ask me for my **first name** (for the key filename) and **email address** (suggest `firstname@nextfinancial.io` as the format)
+3. **IMPORTANT**: Use a unique filename per developer: `~/.ssh/vps/id_<name>_ed25519` (e.g. `id_don_ed25519`). Never overwrite an existing key file without explicit confirmation.
+4. Generate with: `ssh-keygen -t ed25519 -C "<my-email>" -f ~/.ssh/vps/id_<name>_ed25519`
    - **Default to using a passphrase** for security. Let me choose the passphrase interactively.
    - After generation, check if an ssh-agent is running (`ssh-add -l 2>/dev/null`). If not, start one (`eval $(ssh-agent -s)`).
-   - Add the key to the agent: `ssh-add ~/.ssh/vps/id_vps_ed25519`
-   - On macOS, for persistent keychain integration: `ssh-add --apple-use-keychain ~/.ssh/vps/id_vps_ed25519`
+   - Add the key to the agent: `ssh-add ~/.ssh/vps/id_<name>_ed25519`
+   - On macOS, for persistent keychain integration: `ssh-add --apple-use-keychain ~/.ssh/vps/id_<name>_ed25519`
 
 After the key is ready, print the full public key contents.
 
@@ -43,7 +44,7 @@ For each machine in `machines.yaml`, add a host entry like:
 Host np-dev-1
   HostName <host from machines.yaml>
   User <user from machines.yaml>
-  IdentityFile ~/.ssh/vps/id_vps_ed25519
+  IdentityFile ~/.ssh/vps/id_<name>_ed25519
   IdentitiesOnly yes
   ServerAliveInterval 60
   ServerAliveCountMax 3
