@@ -1,20 +1,8 @@
-# nextpay-dev-vps
+# dev-vps
 
-Shared VPS setup for pair programming via tmux. One repo provisions servers and configures developer clients.
+Shared VPS for pair programming via tmux.
 
-## Quick Start
-
-### Server (run once per VPS)
-
-```bash
-# From repo checkout:
-sudo bash server/setup.sh
-
-# Or curl-pipe (standalone):
-curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/server/setup.sh | sudo bash
-```
-
-### Client (each developer)
+## Getting Started
 
 Paste this into your coding agent (Claude Code, Codex, Cursor, etc.):
 
@@ -36,23 +24,7 @@ bash client/setup.sh
 See `client/AGENTS.md` for the full step-by-step guide.
 </details>
 
-## Architecture
-
-```
-nextpay-dev-vps/
-├── machines.yaml              # VPS registry (name, host, user)
-├── keys/                      # One .pub file per engineer
-├── server/
-│   ├── setup.sh               # Idempotent VPS provisioner
-│   ├── session.sh             # Tmux session manager
-│   └── tmux.conf              # Tmux config with persistence
-└── client/
-    ├── npdev                  # CLI script
-    ├── setup.sh               # Client installer
-    └── AGENTS.md              # Agent-readable onboarding prompt
-```
-
-### How Pair Programming Works
+## How Pair Programming Works
 
 All developers SSH as a shared user. The tmux session manager lets multiple people attach to the same named session:
 
@@ -65,26 +37,6 @@ npdev feature-auth             # Joins the SAME terminal — live pair programmi
 ```
 
 Detach without killing the session: `Ctrl+B, D`
-
-## Adding a Machine
-
-Add an entry to `machines.yaml`:
-
-```yaml
-machines:
-  - name: np-dev-2
-    host: 1.2.3.4
-    user: dev
-    description: "Secondary dev VPS"
-```
-
-Then provision: `sudo bash server/setup.sh` on the new VPS.
-
-## Adding a Developer
-
-1. Developer runs through `client/AGENTS.md` (or manual setup)
-2. They commit their public key to `keys/<name>.pub` and push
-3. Any existing developer syncs the key to the VPS: `npdev sync-keys`
 
 ## CLI Reference
 
@@ -99,6 +51,12 @@ Then provision: `sudo bash server/setup.sh` on the new VPS.
 | `npdev --version` | Show version |
 | `npdev --help` | Full usage |
 
-## Session Commands (on server)
+## Adding a Developer
 
-The session manager at `~/.vps/session.sh` supports: `start`, `end`, `list`, `describe`, `reconcile`, `registry`.
+1. New developer runs through the Getting Started prompt above
+2. They commit their public key to `keys/<name>.pub` and push
+3. Any existing developer syncs the key to the VPS: `npdev sync-keys`
+
+## Server Administration
+
+See [server/README.md](server/README.md) for provisioning VPSes, adding machines, and server-side session management.
