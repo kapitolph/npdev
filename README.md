@@ -16,13 +16,25 @@ curl -fsSL https://raw.githubusercontent.com/kapitolph/nextpay-dev-vps/main/serv
 
 ### Client (each developer)
 
-Paste `client/client-prompt.md` into your coding agent, or manually:
+Paste this into your coding agent (Claude Code, Codex, Cursor, etc.):
+
+```
+Clone https://github.com/kapitolph/nextpay-dev-vps.git then read
+client/client-prompt.md and walk me through the setup step by step.
+```
+
+<details>
+<summary>Manual setup (without an agent)</summary>
 
 ```bash
 git clone https://github.com/kapitolph/nextpay-dev-vps.git
 cd nextpay-dev-vps
 bash client/setup.sh
+# Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
 ```
+
+See `client/client-prompt.md` for the full step-by-step guide.
+</details>
 
 ## Architecture
 

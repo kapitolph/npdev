@@ -1,15 +1,16 @@
-# Dev VPS Client Setup Prompt
+# Dev VPS Client Setup
 
-> **For developers**: Paste everything below the line into your coding agent (Claude Code, Codex, etc.) to set up SSH access and the `npdev` CLI for the shared dev VPS. This guide assumes macOS or Linux.
+Agent-readable onboarding instructions. When an agent reads this file, it should walk the developer through each step interactively.
 
----
+## Instructions for the Agent
 
-I need you to set up SSH access and the `npdev` CLI for a shared development VPS. Walk me through this step by step, asking for my preferences where noted. Do not skip steps or rush ahead — wait for my confirmation before proceeding to the next step.
+You are setting up SSH access and the `npdev` CLI for a shared development VPS. Walk the developer through this step by step, asking for preferences where noted. Do not skip steps or rush ahead — wait for confirmation before proceeding to the next step.
 
 ## Context
 
-- **VPS registry**: The repo contains a `machines.yaml` file listing all VPS instances
-- **Shared user**: All developers SSH as the same user (defined per-machine in `machines.yaml`) for pair programming via shared tmux sessions
+- **This repo**: You should already be in the `nextpay-dev-vps` repo checkout. If not, clone it first: `git clone https://github.com/kapitolph/nextpay-dev-vps.git && cd nextpay-dev-vps`
+- **VPS registry**: `machines.yaml` lists all VPS instances (name, host, user)
+- **Shared user**: All developers SSH as the same user (defined per-machine) for pair programming via shared tmux sessions
 - **Session system**: The VPS runs a tmux session manager. When two people connect to the same named session, they share the exact same terminal — this enables live pair programming.
 - **CLI**: `npdev` is the local client for managing VPS sessions
 
@@ -86,16 +87,16 @@ If the connection times out or is refused, suggest:
 
 ## Step 5: Commit Public Key
 
-Copy the public key into the repo so it's tracked and future `server/setup.sh` runs import it:
+Copy the public key into the repo so it's tracked and future `server/setup.sh` runs import it automatically.
+
+Ask the developer for the filename to use (suggest their first name, lowercase). Then copy whichever public key was used in Step 1:
 
 ```bash
-cp ~/.ssh/vps/id_vps_ed25519.pub keys/<your-name>.pub
-git add keys/<your-name>.pub
-git commit -m "chore: add <your-name> SSH public key"
+cp <path-to-public-key-from-step-1> keys/<name>.pub
+git add keys/<name>.pub
+git commit -m "chore: add <name> SSH public key"
 git push
 ```
-
-Ask me for the filename to use (suggest my first name, lowercase).
 
 ## Summary
 
