@@ -28,7 +28,7 @@ client/AGENTS.md and walk me through the setup step by step.
 
 ```bash
 git clone https://github.com/kapitolph/dev-vps.git
-cd nextpay-dev-vps
+cd dev-vps
 bash client/setup.sh
 # Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
 ```
@@ -83,9 +83,8 @@ Then provision: `sudo bash server/setup.sh` on the new VPS.
 ## Adding a Developer
 
 1. Developer runs through `client/AGENTS.md` (or manual setup)
-2. They commit their public key to `keys/<name>.pub`
-3. Admin re-runs `sudo bash server/setup.sh` on each VPS to import the key
-   (or manually: `echo '<key>' >> /home/dev/.ssh/authorized_keys`)
+2. They commit their public key to `keys/<name>.pub` and push
+3. Any existing developer syncs the key to the VPS: `npdev sync-keys`
 
 ## CLI Reference
 
@@ -95,6 +94,7 @@ Then provision: `sudo bash server/setup.sh` on the new VPS.
 | `npdev <name> [desc]` | Create or attach to named session |
 | `npdev list` | List all sessions |
 | `npdev end <name>` | End a session |
+| `npdev sync-keys` | Sync `keys/*.pub` from GitHub to VPS `authorized_keys` |
 | `npdev --machine <name>` | Select VPS (when multiple configured) |
 | `npdev --version` | Show version |
 | `npdev --help` | Full usage |

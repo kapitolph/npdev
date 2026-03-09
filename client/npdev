@@ -4,7 +4,8 @@
 
 set -euo pipefail
 
-NPDEV_VERSION="0.1.0"
+NPDEV_VERSION="0.2.0"
+GITHUB_REPO="kapitolph/dev-vps"
 CONFIG_FILE="$HOME/.npdev/config"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -136,6 +137,50 @@ cmd_shell() {
   ssh -t "$(ssh_target)" "exec \$SHELL -l"
 }
 
+cmd_sync_keys() {
+  select_machine
+  local target
+  target="$(ssh_target)"
+
+  echo "Fetching keys from GitHub (${GITHUB_REPO})..."
+
+  # Get list of .pub files in keys/ via GitHub API
+  local key_files
+  key_files=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/contents/keys" 2>/dev/null \
+    | grep '"name"' | grep '\.pub"' | sed 's/.*"name": "\(.*\)".*/\1/')
+
+  if [[ -z "$key_files" ]]; then
+    echo "No .pub files found in keys/ (or GitHub API error)."
+    return 1
+  fi
+
+  local added=0
+  for file in $key_files; do
+    [[ "$file" == ".gitkeep" ]] && continue
+    local name="${file%.pub}"
+    local key
+    key=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/keys/${file}" 2>/dev/null)
+    [[ -z "$key" ]] && continue
+
+    # Check if already present, append if not (all via single SSH)
+    local result
+    result=$(ssh "$target" "grep -qF '${key}' ~/.ssh/authorized_keys 2>/dev/null && echo 'exists' || { echo '${key}' >> ~/.ssh/authorized_keys && echo 'added'; }")
+
+    if [[ "$result" == "added" ]]; then
+      printf '  \033[1;32m✓ Added key: %s\033[0m\n' "$name"
+      ((added++))
+    else
+      printf '  · Already present: %s\n' "$name"
+    fi
+  done
+
+  if [[ $added -gt 0 ]]; then
+    printf '\033[1;32m%d new key(s) synced to %s\033[0m\n' "$added" "$MACHINE_NAME"
+  else
+    echo "All keys already synced."
+  fi
+}
+
 cmd_usage() {
   cat <<'USAGE'
 npdev — NextPay Dev VPS CLI
@@ -145,6 +190,7 @@ Usage:
   npdev <session-name> [desc]     Create or attach to named tmux session
   npdev list                      List all sessions
   npdev end <session-name>        End a session
+  npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
   npdev --machine <name> ...      Select VPS when multiple configured
   npdev --version                 Show version
   npdev --help                    Show this help
@@ -183,6 +229,8 @@ case "${1:-}" in
     cmd_shell ;;
   list)
     cmd_list ;;
+  sync-keys)
+    cmd_sync_keys ;;
   end)
     shift; [[ $# -lt 1 ]] && die "Usage: npdev end <session-name>"
     cmd_end "$1" ;;
