@@ -15,13 +15,12 @@ client/AGENTS.md and walk me through the setup step by step.
 <summary>Manual setup (without an agent)</summary>
 
 ```bash
-git clone https://github.com/kapitolph/dev-vps.git
-cd dev-vps
-bash client/setup.sh
-# Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
-```
+# Install npdev (no repo clone needed):
+curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/client/setup.sh | bash
 
-See `client/AGENTS.md` for the full step-by-step guide.
+# Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
+# See client/AGENTS.md for the full step-by-step guide.
+```
 </details>
 
 ## How Pair Programming Works
@@ -47,6 +46,7 @@ Detach without killing the session: `Ctrl+B, D`
 | `npdev list` | List all sessions |
 | `npdev end <name>` | End a session |
 | `npdev sync-keys` | Sync `keys/*.pub` from GitHub to VPS `authorized_keys` |
+| `npdev update` | Update npdev + machines config from GitHub |
 | `npdev --machine <name>` | Select VPS (when multiple configured) |
 | `npdev --version` | Show version |
 | `npdev --help` | Full usage |

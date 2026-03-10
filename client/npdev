@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # npdev — NextPay Dev VPS CLI
-# Manages SSH sessions on shared dev VPS instances.
+# Self-contained — no repo clone needed after install.
+# Config and machines live in ~/.npdev/
 
 set -euo pipefail
 
-NPDEV_VERSION="0.2.0"
+NPDEV_VERSION="0.3.0"
 GITHUB_REPO="kapitolph/dev-vps"
-CONFIG_FILE="$HOME/.npdev/config"
+NPDEV_DIR="$HOME/.npdev"
+CONFIG_FILE="$NPDEV_DIR/config"
+MACHINES_FILE="$NPDEV_DIR/machines.yaml"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 die() { printf '\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
+info() { printf '\033[1;34m▸ %s\033[0m\n' "$*"; }
+ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 
 validate_session_name() {
   [[ "$1" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Session name must contain only letters, numbers, hyphens, and underscores."
@@ -19,19 +24,13 @@ validate_session_name() {
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 load_config() {
-  if [[ ! -f "$CONFIG_FILE" ]]; then
-    die "npdev not configured. Run: bash /path/to/nextpay-dev-vps/client/setup.sh"
+  if [[ ! -f "$MACHINES_FILE" ]]; then
+    die "npdev not configured. Run: npdev update (or bash client/setup.sh from repo)"
   fi
-  # shellcheck source=/dev/null
-  source "$CONFIG_FILE"
-  [[ -n "${REPO_DIR:-}" ]] || die "REPO_DIR not set in $CONFIG_FILE"
-  MACHINES_FILE="$REPO_DIR/machines.yaml"
-  [[ -f "$MACHINES_FILE" ]] || die "machines.yaml not found at $MACHINES_FILE"
 }
 
 # ─── Machine Selection ────────────────────────────────────────────────────────
 
-# Parse machines.yaml with awk (flat structure, no YAML library needed)
 get_machine_count() {
   awk '/^  - name:/ { count++ } END { print count+0 }' "$MACHINES_FILE"
 }
@@ -57,7 +56,6 @@ select_machine() {
     die "No machines defined in $MACHINES_FILE"
   fi
 
-  # Explicit --machine flag takes priority
   if [[ -n "$target" ]]; then
     local host user
     host=$(get_machine_field "$target" "host")
@@ -69,7 +67,6 @@ select_machine() {
     return
   fi
 
-  # Single machine = auto-select
   if [[ $count -eq 1 ]]; then
     MACHINE_NAME=$(get_machine_names | head -1)
     MACHINE_HOST=$(get_machine_field "$MACHINE_NAME" "host")
@@ -77,7 +74,6 @@ select_machine() {
     return
   fi
 
-  # Multiple machines = interactive prompt
   echo "Available machines:" >&2
   local i=1
   local names=()
@@ -144,7 +140,6 @@ cmd_sync_keys() {
 
   echo "Fetching keys from GitHub (${GITHUB_REPO})..."
 
-  # Get list of .pub files in keys/ via GitHub API
   local key_files
   key_files=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/contents/keys" 2>/dev/null \
     | grep '"name"' | grep '\.pub"' | sed 's/.*"name": "\(.*\)".*/\1/')
@@ -162,7 +157,6 @@ cmd_sync_keys() {
     key=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/keys/${file}" 2>/dev/null)
     [[ -z "$key" ]] && continue
 
-    # Check if already present, append if not (all via single SSH)
     local result
     result=$(ssh "$target" "grep -qF '${key}' ~/.ssh/authorized_keys 2>/dev/null && echo 'exists' || { echo '${key}' >> ~/.ssh/authorized_keys && echo 'added'; }")
 
@@ -181,6 +175,39 @@ cmd_sync_keys() {
   fi
 }
 
+cmd_update() {
+  info "Updating npdev from GitHub (${GITHUB_REPO})..."
+
+  mkdir -p "$NPDEV_DIR"
+
+  # Update machines.yaml
+  local new_machines
+  new_machines=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/machines.yaml" 2>/dev/null)
+  if [[ -n "$new_machines" ]]; then
+    echo "$new_machines" > "$MACHINES_FILE"
+    ok "machines.yaml updated"
+  else
+    die "Failed to fetch machines.yaml from GitHub"
+  fi
+
+  # Update npdev script itself
+  local self_path
+  self_path="$(realpath "${BASH_SOURCE[0]}")"
+  local new_script
+  new_script=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/npdev" 2>/dev/null)
+  if [[ -n "$new_script" ]]; then
+    echo "$new_script" > "$self_path"
+    chmod +x "$self_path"
+    ok "npdev script updated"
+  else
+    die "Failed to fetch npdev from GitHub"
+  fi
+
+  local new_version
+  new_version=$(grep '^NPDEV_VERSION=' "$self_path" | cut -d'"' -f2)
+  ok "npdev is now at v${new_version:-unknown}"
+}
+
 cmd_usage() {
   cat <<'USAGE'
 npdev — NextPay Dev VPS CLI
@@ -191,6 +218,7 @@ Usage:
   npdev list                      List all sessions
   npdev end <session-name>        End a session
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
+  npdev update                    Update npdev + machines from GitHub
   npdev --machine <name> ...      Select VPS when multiple configured
   npdev --version                 Show version
   npdev --help                    Show this help
@@ -205,7 +233,6 @@ USAGE
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-# Parse global flags
 NPDEV_MACHINE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -221,9 +248,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# update doesn't need config
+case "${1:-}" in
+  update)
+    cmd_update; exit 0 ;;
+esac
+
 load_config
 
-# Dispatch
 case "${1:-}" in
   "")
     cmd_shell ;;
