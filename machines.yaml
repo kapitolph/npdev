@@ -1,5 +1,5 @@
 machines:
   - name: np-dev-1
     host: 13.250.2.78
-    user: dev
+    user: don
     description: "NextPay primary dev VPS"

@@ -11,8 +11,8 @@
 set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-SHARED_USER="dev"
-SHARED_GROUP="developers"
+SHARED_USER="don"
+SHARED_GROUP="don"
 REPO_URL="https://github.com/kapitolph/nextpay-v3.git"
 REPO_DIR="/home/$SHARED_USER/nextpay"
 VPS_DIR="/home/$SHARED_USER/.vps"
