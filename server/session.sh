@@ -111,16 +111,20 @@ cmd_start() {
   registry_add "$name" "$type" "$desc"
 
   # Build the command for the tmux session
+  # Use REPO_DIR if it exists, otherwise home
+  local work_dir="$HOME"
+  [[ -d "$REPO_DIR" ]] && work_dir="$REPO_DIR"
+
   local cmd
   case "$type" in
     shell)
-      cmd="cd $REPO_DIR && exec \$SHELL -l"
+      cmd="cd $work_dir && exec \$SHELL -l"
       ;;
     claude)
-      cmd="cd $REPO_DIR && claude --dangerously-skip-permissions"
+      cmd="cd $work_dir && claude --dangerously-skip-permissions"
       ;;
     codex)
-      cmd="cd $REPO_DIR && codex --dangerously-bypass-approvals-and-sandbox"
+      cmd="cd $work_dir && codex --dangerously-bypass-approvals-and-sandbox"
       ;;
     *)
       echo "Unknown type: $type" >&2
