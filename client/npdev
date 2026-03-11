@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-NPDEV_VERSION="0.3.0"
+NPDEV_VERSION="0.4.0"
 GITHUB_REPO="kapitolph/dev-vps"
 NPDEV_DIR="$HOME/.npdev"
 CONFIG_FILE="$NPDEV_DIR/config"
@@ -26,6 +26,12 @@ validate_session_name() {
 load_config() {
   if [[ ! -f "$MACHINES_FILE" ]]; then
     die "npdev not configured. Run: npdev update (or bash client/setup.sh from repo)"
+  fi
+  # Load saved developer identity
+  if [[ -z "${NPDEV_USER:-}" ]] && [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+    NPDEV_USER="${NPDEV_USER:-}"
   fi
 }
 
@@ -102,17 +108,24 @@ ssh_target() {
   echo "$MACHINE_USER@$MACHINE_HOST"
 }
 
+require_user() {
+  if [[ -z "${NPDEV_USER:-}" ]]; then
+    die "Developer identity not set. Run: npdev setup"
+  fi
+}
+
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_start() {
   local name="$1"; shift
   local desc="${*:-}"
   validate_session_name "$name"
+  require_user
   select_machine
   if [[ -n "$desc" ]]; then
-    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell' '$desc'"
+    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell' '$desc' '$NPDEV_USER'"
   else
-    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell'"
+    ssh -t "$(ssh_target)" "bash ~/.vps/session.sh start '$name' 'shell' '' '$NPDEV_USER'"
   fi
 }
 
@@ -129,8 +142,9 @@ cmd_end() {
 }
 
 cmd_shell() {
+  require_user
   select_machine
-  ssh -t "$(ssh_target)" "exec \$SHELL -l"
+  ssh -t "$(ssh_target)" "NPDEV_USER='$NPDEV_USER' exec \$SHELL -l"
 }
 
 cmd_sync_keys() {
@@ -175,12 +189,69 @@ cmd_sync_keys() {
   fi
 }
 
+cmd_setup_identity() {
+  info "Setting up developer identity..."
+
+  local dev_name dev_email gh_token
+
+  # Name
+  printf "Your name (e.g. don): "
+  read -r dev_name
+  [[ -n "$dev_name" ]] || die "Name is required"
+
+  # Email
+  printf "Your email (e.g. %s@nextfinancial.io): " "$dev_name"
+  read -r dev_email
+  [[ -n "$dev_email" ]] || dev_email="${dev_name}@nextfinancial.io"
+
+  # GitHub token
+  echo ""
+  echo "  GitHub personal access token (for git push + gh CLI)."
+  echo "  Create one at: https://github.com/settings/tokens"
+  echo "  Scopes needed: repo, read:org"
+  echo ""
+  printf "GitHub token (paste, then Enter): "
+  read -rs gh_token
+  echo ""
+
+  # Save locally
+  mkdir -p "$NPDEV_DIR"
+  cat > "$CONFIG_FILE" << EOF
+# npdev config — managed by npdev setup
+NPDEV_USER="$dev_name"
+EOF
+  ok "Local identity saved (NPDEV_USER=$dev_name)"
+
+  # Create env file on VPS
+  select_machine
+  local target
+  target="$(ssh_target)"
+
+  ssh "$target" "mkdir -p ~/.vps/developers && cat > ~/.vps/developers/${dev_name}.env << 'DEVEOF'
+# Developer identity for $dev_name
+export GIT_AUTHOR_NAME=\"$dev_name\"
+export GIT_AUTHOR_EMAIL=\"$dev_email\"
+export GIT_COMMITTER_NAME=\"$dev_name\"
+export GIT_COMMITTER_EMAIL=\"$dev_email\"
+export GH_TOKEN=\"$gh_token\"
+DEVEOF
+chmod 600 ~/.vps/developers/${dev_name}.env"
+
+  ok "VPS identity created at ~/.vps/developers/${dev_name}.env"
+
+  # Verify
+  ssh "$target" "source ~/.vps/developers/${dev_name}.env && echo \"  Git: \$GIT_AUTHOR_NAME <\$GIT_AUTHOR_EMAIL>\" && echo \"  GH:  token set (\${#GH_TOKEN} chars)\""
+
+  echo ""
+  echo "  Done! Sessions will now use your identity."
+  echo "  Test with: npdev my-session"
+}
+
 cmd_update() {
   info "Updating npdev from GitHub (${GITHUB_REPO})..."
 
   mkdir -p "$NPDEV_DIR"
 
-  # Update machines.yaml
   local new_machines
   new_machines=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/machines.yaml" 2>/dev/null)
   if [[ -n "$new_machines" ]]; then
@@ -190,7 +261,6 @@ cmd_update() {
     die "Failed to fetch machines.yaml from GitHub"
   fi
 
-  # Update npdev script itself
   local self_path
   self_path="$(realpath "${BASH_SOURCE[0]}")"
   local new_script
@@ -217,8 +287,10 @@ Usage:
   npdev <session-name> [desc]     Create or attach to named tmux session
   npdev list                      List all sessions
   npdev end <session-name>        End a session
+  npdev setup                     Set up your developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
   npdev update                    Update npdev + machines from GitHub
+  npdev --user <name> ...         Override developer identity for this command
   npdev --machine <name> ...      Select VPS when multiple configured
   npdev --version                 Show version
   npdev --help                    Show this help
@@ -234,10 +306,14 @@ USAGE
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 NPDEV_MACHINE=""
+NPDEV_USER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --machine)
       shift; NPDEV_MACHINE="${1:-}"; [[ -n "$NPDEV_MACHINE" ]] || die "--machine requires a name"
+      shift ;;
+    --user)
+      shift; NPDEV_USER="${1:-}"; [[ -n "$NPDEV_USER" ]] || die "--user requires a name"
       shift ;;
     --version|-v)
       echo "npdev $NPDEV_VERSION"; exit 0 ;;
@@ -248,10 +324,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# update doesn't need config
+# Commands that don't need full config
 case "${1:-}" in
   update)
     cmd_update; exit 0 ;;
+  setup)
+    load_config; cmd_setup_identity; exit 0 ;;
 esac
 
 load_config

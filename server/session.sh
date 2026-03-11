@@ -3,6 +3,7 @@
 # All developers share the same tmux sessions via the shared 'dev' user.
 # Usage: session.sh <command> [args...]
 # Commands: start, end, list, describe, reconcile, registry
+# Developer identity: pass dev name as last arg to 'start' to source ~/.vps/developers/<name>.env
 
 set -euo pipefail
 
@@ -10,6 +11,7 @@ HOME_DIR="$HOME"
 REPO_DIR="$HOME/nextpay"
 REGISTRY="$HOME/.vps/sessions.yaml"
 TMUX_CONF="$HOME/.vps/tmux.conf"
+DEVELOPERS_DIR="$HOME/.vps/developers"
 PATH="$HOME/.local/bin:$HOME/.bun/bin:$HOME/.volta/bin:$PATH"
 
 # Ensure registry exists
@@ -90,7 +92,7 @@ has_active_entry() {
 }
 
 cmd_start() {
-  local name="$1" type="${2:-shell}" desc="${3:-}"
+  local name="$1" type="${2:-shell}" desc="${3:-}" dev_user="${4:-}"
 
   # If tmux session already exists, just attach (pair programming!)
   if tmux_running "$name"; then
@@ -110,21 +112,27 @@ cmd_start() {
   # Add registry entry
   registry_add "$name" "$type" "$desc"
 
-  # Build the command for the tmux session
   # Use REPO_DIR if it exists, otherwise home
   local work_dir="$HOME"
   [[ -d "$REPO_DIR" ]] && work_dir="$REPO_DIR"
 
+  # Build env preamble (source developer identity if available)
+  local env_preamble=""
+  if [[ -n "$dev_user" ]] && [[ -f "$DEVELOPERS_DIR/${dev_user}.env" ]]; then
+    env_preamble="source $DEVELOPERS_DIR/${dev_user}.env && "
+  fi
+
+  # Build the command for the tmux session
   local cmd
   case "$type" in
     shell)
-      cmd="cd $work_dir && exec \$SHELL -l"
+      cmd="${env_preamble}cd $work_dir && exec \$SHELL -l"
       ;;
     claude)
-      cmd="cd $work_dir && claude --dangerously-skip-permissions"
+      cmd="${env_preamble}cd $work_dir && claude --dangerously-skip-permissions"
       ;;
     codex)
-      cmd="cd $work_dir && codex --dangerously-bypass-approvals-and-sandbox"
+      cmd="${env_preamble}cd $work_dir && codex --dangerously-bypass-approvals-and-sandbox"
       ;;
     *)
       echo "Unknown type: $type" >&2
