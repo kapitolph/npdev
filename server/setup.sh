@@ -198,20 +198,31 @@ echo "  Per-developer tokens are used (via npdev setup + git credential helper).
 echo "  Skipping shared gh auth login — each developer's GH_TOKEN is injected per session."
 ok "GitHub auth: per-developer tokens via ~/.vps/git-credential-token"
 
-# ─── Step 8: Clone repository ────────────────────────────────────────────────
+# ─── Step 8: Clone repository (optional) ─────────────────────────────────────
 info "Cloning repository..."
 if [[ -d "$REPO_DIR/.git" ]]; then
   ok "Repository already cloned at $REPO_DIR"
   run_as_dev "cd $REPO_DIR && git pull --ff-only" || warn "Pull failed (probably has local changes)"
 else
-  run_as_dev "gh repo clone $REPO_URL $REPO_DIR"
-  ok "Cloned to $REPO_DIR"
+  # Clone requires GitHub auth — skip if no token available.
+  # Developers will clone in their sessions where GH_TOKEN is set via npdev setup.
+  if run_as_dev "git ls-remote $REPO_URL HEAD &>/dev/null"; then
+    run_as_dev "git clone $REPO_URL $REPO_DIR"
+    ok "Cloned to $REPO_DIR"
+  else
+    warn "Skipping clone — no GitHub auth available during provisioning."
+    warn "Developers will clone the repo in their first session (GH_TOKEN is set per session via npdev setup)."
+  fi
 fi
 
 # ─── Step 9: Install project dependencies ────────────────────────────────────
-info "Installing project dependencies..."
-run_as_dev "cd $REPO_DIR && source ~/.bashrc && bun install" || warn "bun install had issues (may need manual intervention)"
-ok "Dependencies installed"
+if [[ -d "$REPO_DIR/.git" ]]; then
+  info "Installing project dependencies..."
+  run_as_dev "cd $REPO_DIR && source ~/.bashrc && bun install" || warn "bun install had issues (may need manual intervention)"
+  ok "Dependencies installed"
+else
+  info "Skipping dependency install (repo not cloned yet)"
+fi
 
 # ─── Step 10: Set up tmux session manager ─────────────────────────────────────
 info "Setting up tmux session manager..."
