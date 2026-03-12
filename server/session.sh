@@ -119,7 +119,7 @@ cmd_start() {
   # Build env preamble (source developer identity if available)
   local env_preamble=""
   if [[ -n "$dev_user" ]] && [[ -f "$DEVELOPERS_DIR/${dev_user}.env" ]]; then
-    env_preamble="source $DEVELOPERS_DIR/${dev_user}.env && "
+    env_preamble="source $DEVELOPERS_DIR/${dev_user}.env && git config --global user.name \"\$GIT_AUTHOR_NAME\" && git config --global user.email \"\$GIT_AUTHOR_EMAIL\" && "
   fi
 
   # Build the command for the tmux session
