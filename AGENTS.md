@@ -81,6 +81,10 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 - **Non-interactive SSH**: Doesn't load `.bashrc`. Scripts must set PATH explicitly: `PATH="$HOME/.bun/bin:$HOME/.volta/bin:$HOME/.local/bin:$PATH"`.
 - **GitHub raw CDN**: Caches for several minutes after push. `npdev update` right after pushing may fetch stale content.
 - **`gh auth status` false alarm**: Newer `gh` versions report classic `ghp_` tokens as invalid via `gh auth status`, but the token works fine for git operations and API calls. Test with `curl -H "Authorization: token $GH_TOKEN" https://api.github.com/user` instead.
+- **Never use `gh repo clone` on the VPS**: `gh repo clone` embeds the developer's token in the remote URL (`https://x-access-token:<token>@github.com/...`). This bakes one person's credentials into the repo for everyone. Always use `git clone https://github.com/...` — the credential helper will inject the correct per-developer token automatically. If a repo already has an embedded token, fix with: `git remote set-url origin https://github.com/<org>/<repo>.git`
+- **Per-developer gitconfig isolation**: `session.sh` creates `~/.vps/developers/<name>.gitconfig` per developer and sets `GIT_CONFIG_GLOBAL` env var. This prevents concurrent sessions from overwriting each other's `git config` identity. Never run `git config --global user.name/email` directly on the VPS — it pollutes all sessions.
+- **Stale sessions don't get identity**: Sessions created before the identity system was added won't have env vars or gitconfig set. Must `npdev end <name>` and recreate.
+- **GitHub raw CDN delays deployment**: After pushing, `curl` from `raw.githubusercontent.com` may fetch stale content for several minutes. Use `scp` to deploy server files directly instead of fetching from GitHub.
 - **`sed -i` portability**: `sed -i` (no backup suffix) works on Linux (GNU sed) but not macOS (BSD sed). Server scripts run on Linux VPS only. Client scripts avoid `sed -i`.
 - **YAML parsing**: `machines.yaml` and `sessions.yaml` are parsed with `awk`, not a YAML library. Keep the structure flat — no nested objects, no multi-line strings.
 
@@ -93,7 +97,7 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 3. **Update `server/setup.sh`** if changing anything server-side — it's the canonical provisioner and should stay in sync with manual changes.
 4. **Update this `AGENTS.md`** if changing architecture, adding files, or discovering new gotchas.
 5. Commit and push.
-6. If server files changed, re-run setup on the VPS: `ssh dev@<host> "cd /tmp && rm -rf dev-vps && git clone https://github.com/kapitolph/dev-vps.git && sudo bash dev-vps/server/setup.sh"`
+6. If server files changed, deploy directly via `scp` (avoids GitHub CDN caching): `scp server/session.sh dev@<host>:~/.vps/session.sh` and `scp server/tmux.conf dev@<host>:~/.vps/tmux.conf`. For full re-provisioning: `scp -r server/ dev@<host>:/tmp/dev-vps-server && ssh dev@<host> "sudo bash /tmp/dev-vps-server/setup.sh"`
 7. If client files changed, users run `npdev update` (they'll be warned automatically by the version check).
 
 ### Testing
