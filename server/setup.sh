@@ -297,6 +297,7 @@ else
   curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude/install-hooks.sh" -o "$CLAUDE_HOOK_INSTALLER"
   mkdir -p "/tmp/npdev-claude-hooks"
   curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude/hooks/identify-developer.sh" -o "/tmp/npdev-claude-hooks/identify-developer.sh"
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude/hooks/update-session-desc.sh" -o "/tmp/npdev-claude-hooks/update-session-desc.sh"
   # Patch script to use temp directory
   sed -i "s|SCRIPT_DIR=.*|SCRIPT_DIR=\"/tmp/npdev-claude\"|" "$CLAUDE_HOOK_INSTALLER"
   chmod +x "$CLAUDE_HOOK_INSTALLER"
@@ -305,7 +306,20 @@ fi
 run_as_dev "bash $CLAUDE_HOOK_INSTALLER"
 ok "Claude Code hooks installed"
 
-# ─── Step 13: Configure dev user's shell PATH ────────────────────────────────
+# ─── Step 14: Install tmux notification hooks ────────────────────────────────
+info "Installing tmux notification hooks..."
+
+mkdir -p "$VPS_DIR/hooks"
+if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/server/hooks/notify-attach.sh" ]]; then
+  cp "$REPO_ROOT/server/hooks/notify-attach.sh" "$VPS_DIR/hooks/"
+else
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/hooks/notify-attach.sh" -o "$VPS_DIR/hooks/notify-attach.sh"
+fi
+chmod +x "$VPS_DIR/hooks/notify-attach.sh"
+chown -R "$SHARED_USER:$SHARED_GROUP" "$VPS_DIR/hooks"
+ok "Tmux notification hooks installed"
+
+# ─── Step 15: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
 
 BASHRC="/home/$SHARED_USER/.bashrc"

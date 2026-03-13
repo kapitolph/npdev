@@ -1,5 +1,6 @@
 import { homedir } from "os";
 import { join } from "path";
+import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import type { Config, Machine } from "../types";
 
@@ -55,4 +56,8 @@ export async function loadMachines(): Promise<Machine[]> {
 
 export function npdevDir(): string {
   return NPDEV_DIR;
+}
+
+export function isOnVPS(): boolean {
+  return existsSync(`${homedir()}/.vps`);
 }

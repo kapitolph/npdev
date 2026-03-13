@@ -16,6 +16,7 @@ export interface SessionData {
   owner: string;
   created_at: string;
   last_activity: string;
+  client_count: string;
 }
 
 export interface VersionInfo {

@@ -97,7 +97,12 @@ cmd_start() {
 
   # If tmux session already exists, just attach (pair programming!)
   if tmux_running "$name"; then
-    exec tmux -f "$TMUX_CONF" attach-session -t "$name"
+    if [[ -n "${TMUX:-}" ]]; then
+      tmux -f "$TMUX_CONF" switch-client -t "$name"
+    else
+      exec tmux -f "$TMUX_CONF" attach-session -t "$name"
+    fi
+    return 0
   fi
 
   # Prompt for description if not provided and interactive
@@ -153,7 +158,11 @@ cmd_start() {
 
   # Create and attach
   tmux -f "$TMUX_CONF" new-session -d -s "$name" "$cmd"
-  exec tmux -f "$TMUX_CONF" attach-session -t "$name"
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux -f "$TMUX_CONF" switch-client -t "$name"
+  else
+    exec tmux -f "$TMUX_CONF" attach-session -t "$name"
+  fi
 }
 
 cmd_end() {
@@ -292,6 +301,8 @@ cmd_session_data() {
 
     local last_activity
     last_activity=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_activity}' 2>/dev/null || echo "")
+    local client_count
+    client_count=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_attached}' 2>/dev/null || echo "0")
 
     # Escape JSON-unsafe characters in description
     local safe_desc
@@ -299,8 +310,8 @@ cmd_session_data() {
 
     [[ $first -eq 0 ]] && printf ','
     first=0
-    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s"}' \
-      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity"
+    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s","client_count":"%s"}' \
+      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity" "$client_count"
   done <<< "$entries"
   printf ']\n'
 }

@@ -11,10 +11,12 @@ SETTINGS_FILE="${CLAUDE_DIR}/settings.json"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Install hook script
+# Install hook scripts
 mkdir -p "$HOOKS_DIR"
 cp "$SCRIPT_DIR/hooks/identify-developer.sh" "$HOOKS_DIR/identify-developer.sh"
 chmod +x "$HOOKS_DIR/identify-developer.sh"
+cp "$SCRIPT_DIR/hooks/update-session-desc.sh" "$HOOKS_DIR/update-session-desc.sh"
+chmod +x "$HOOKS_DIR/update-session-desc.sh"
 
 # Ensure settings.json exists with hooks structure
 if [[ ! -f "$SETTINGS_FILE" ]]; then
@@ -25,26 +27,42 @@ if [[ ! -f "$SETTINGS_FILE" ]]; then
 EOF
 fi
 
-# Check if SessionStart hook already configured
-if grep -q 'identify-developer' "$SETTINGS_FILE" 2>/dev/null; then
-  echo "Claude Code developer identity hook already configured."
-  exit 0
-fi
-
-# Merge SessionStart hook into existing settings using a temp file + jq-free approach
-# We use node/bun since they're guaranteed to be on the VPS
+# Merge hooks into existing settings using node/bun (guaranteed on VPS)
 MERGE_SCRIPT='
 const fs = require("fs");
 const settings = JSON.parse(fs.readFileSync(process.argv[2], "utf-8"));
 if (!settings.hooks) settings.hooks = {};
+
+// SessionStart: identify-developer hook
 if (!settings.hooks.SessionStart) settings.hooks.SessionStart = [];
-settings.hooks.SessionStart.push({
-  hooks: [{
-    type: "command",
-    command: process.env.HOME + "/.claude/hooks/identify-developer.sh",
-    statusMessage: "Identifying developer..."
-  }]
-});
+const hasIdentify = settings.hooks.SessionStart.some(g =>
+  g.hooks && g.hooks.some(h => h.command && h.command.includes("identify-developer"))
+);
+if (!hasIdentify) {
+  settings.hooks.SessionStart.push({
+    hooks: [{
+      type: "command",
+      command: process.env.HOME + "/.claude/hooks/identify-developer.sh",
+      statusMessage: "Identifying developer..."
+    }]
+  });
+}
+
+// Stop: update-session-desc hook
+if (!settings.hooks.Stop) settings.hooks.Stop = [];
+const hasDesc = settings.hooks.Stop.some(g =>
+  g.hooks && g.hooks.some(h => h.command && h.command.includes("update-session-desc"))
+);
+if (!hasDesc) {
+  settings.hooks.Stop.push({
+    hooks: [{
+      type: "command",
+      command: process.env.HOME + "/.claude/hooks/update-session-desc.sh",
+      statusMessage: "Updating session description..."
+    }]
+  });
+}
+
 fs.writeFileSync(process.argv[2], JSON.stringify(settings, null, 2) + "\n");
 '
 
@@ -58,4 +76,4 @@ else
   exit 1
 fi
 
-echo "Claude Code developer identity hook installed."
+echo "Claude Code hooks installed (identify-developer + update-session-desc)."

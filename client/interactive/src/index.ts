@@ -1,21 +1,26 @@
+import * as p from "@clack/prompts";
+import { hostname } from "os";
 import { NPDEV_VERSION, checkVersion } from "./lib/version";
-import { loadConfig, loadMachines } from "./lib/config";
+import { loadConfig, loadMachines, isOnVPS } from "./lib/config";
 import { selectMachine } from "./lib/machine";
-import { showWelcome } from "./ui/welcome";
 import { mainMenu } from "./ui/menu";
 import { cmdStart } from "./commands/start";
 import { cmdEnd } from "./commands/end";
 import { cmdShell } from "./commands/shell";
-import { cmdSessions, fetchSessions } from "./commands/sessions";
+import { cmdSessions } from "./commands/sessions";
 import { cmdSetup } from "./commands/setup";
 import { cmdUpdate } from "./commands/update";
 import { cmdSyncKeys } from "./commands/sync-keys";
+import { fetchSessions } from "./lib/sessions";
+import type { Machine } from "./types";
 
 const USAGE = `npdev — NextPay Dev VPS CLI
 
 Usage:
-  npdev                           Interactive menu (or quick shell if not TTY)
+  npdev                           Interactive dashboard
   npdev <session-name> [desc]     Create or attach to named tmux session
+  npdev -                         Resume most recent session
+  npdev .                         Session from current git branch
   npdev list                      List all sessions
   npdev end <session-name>        End a session
   npdev setup                     Set up your developer identity (git + GitHub)
@@ -78,11 +83,11 @@ async function main(): Promise<void> {
 
   // Load config
   const config = await loadConfig();
-  const npdevUser = userOverride || config.npdevUser;
+  let npdevUser = userOverride || config.npdevUser;
 
   // Check machines exist
   const machines = await loadMachines();
-  if (machines.length === 0) {
+  if (machines.length === 0 && !isOnVPS()) {
     console.error("npdev not configured. Run: npdev update (or bash client/setup.sh from repo)");
     process.exit(1);
   }
@@ -90,32 +95,70 @@ async function main(): Promise<void> {
   // Version check (non-blocking)
   const versionPromise = checkVersion();
 
+  // Select machine (skip on VPS)
+  const getMachine = async (): Promise<Machine> => {
+    if (isOnVPS()) {
+      return { name: hostname(), host: "localhost", user: "dev", description: "local" };
+    }
+    return selectMachine(machineOverride);
+  };
+
   // Route commands
   if (command === "") {
     const isTTY = process.stdin.isTTY;
     if (isTTY) {
-      // Interactive menu
-      const version = await versionPromise;
-      showWelcome(version);
-
+      // First-run: inline setup if no identity
       if (!npdevUser) {
-        console.error("Developer identity not set. Run: npdev setup");
-        process.exit(1);
+        p.log.warn("Developer identity not set. Let's fix that.");
+        await cmdSetup(machineOverride);
+        const reloaded = await loadConfig();
+        if (!reloaded.npdevUser) { console.error("Setup incomplete."); process.exit(1); }
+        npdevUser = reloaded.npdevUser;
       }
 
-      const machine = await selectMachine(machineOverride);
+      const version = await versionPromise;
+      const machine = await getMachine();
       await mainMenu(machine, npdevUser, version, machineOverride);
     } else {
       // Non-TTY: quick shell (preserves bash behavior)
       if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
-      const machine = await selectMachine(machineOverride);
+      const machine = await getMachine();
       await cmdShell(machine, npdevUser);
     }
     return;
   }
 
+  // npdev - : resume most recent session
+  if (command === "-") {
+    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    const machine = await getMachine();
+    const sessions = await fetchSessions(machine);
+    const mine = sessions
+      .filter((s) => s.owner === npdevUser)
+      .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
+    if (mine.length === 0) { console.error("No active sessions."); process.exit(1); }
+    await cmdStart(machine, mine[0].name, npdevUser);
+    process.exit(0);
+  }
+
+  // npdev . : session from current git branch
+  if (command === ".") {
+    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+    const branch = (await new Response(proc.stdout).text()).trim();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0 || !branch || branch === "HEAD") {
+      console.error("Not on a git branch (detached HEAD or not a repo).");
+      process.exit(1);
+    }
+    const sessionName = branch.replace(/\//g, "-").replace(/[^a-zA-Z0-9_-]/g, "");
+    const machine = await getMachine();
+    await cmdStart(machine, sessionName, npdevUser, `branch: ${branch}`);
+    process.exit(0);
+  }
+
   if (command === "list") {
-    const machine = await selectMachine(machineOverride);
+    const machine = await getMachine();
     const npUser = npdevUser || "unknown";
     if (process.stdin.isTTY) {
       await cmdSessions(machine, npUser);
@@ -129,7 +172,7 @@ async function main(): Promise<void> {
   }
 
   if (command === "sync-keys") {
-    const machine = await selectMachine(machineOverride);
+    const machine = await getMachine();
     await cmdSyncKeys(machine);
     process.exit(0);
   }
@@ -137,14 +180,14 @@ async function main(): Promise<void> {
   if (command === "end") {
     const sessionName = remaining[1];
     if (!sessionName) { console.error("Usage: npdev end <session-name>"); process.exit(1); }
-    const machine = await selectMachine(machineOverride);
+    const machine = await getMachine();
     await cmdEnd(machine, sessionName);
     return;
   }
 
   // Default: treat as session name (npdev my-feature [description...])
   if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
-  const machine = await selectMachine(machineOverride);
+  const machine = await getMachine();
   const sessionName = command;
   const description = remaining.slice(1).join(" ") || undefined;
   await cmdStart(machine, sessionName, npdevUser, description);

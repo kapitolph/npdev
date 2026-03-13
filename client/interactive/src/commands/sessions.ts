@@ -3,30 +3,9 @@ import chalk from "chalk";
 import type { Machine, SessionData } from "../types";
 import { sshExec } from "../lib/ssh";
 import { sshInteractive } from "../lib/ssh";
+import { fetchSessions, relativeTime, activityAge } from "../lib/sessions";
 
-export async function fetchSessions(machine: Machine): Promise<SessionData[]> {
-  const { stdout, exitCode } = await sshExec(machine, "bash ~/.vps/session.sh session-data");
-  if (exitCode !== 0 || !stdout) return [];
-  try {
-    return JSON.parse(stdout);
-  } catch {
-    return [];
-  }
-}
-
-function relativeTime(epoch: string): string {
-  if (!epoch) return "unknown";
-  const seconds = Math.floor(Date.now() / 1000) - parseInt(epoch, 10);
-  if (seconds < 60) return "just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function activityAge(epoch: string): number {
-  if (!epoch) return Infinity;
-  return Math.floor(Date.now() / 1000) - parseInt(epoch, 10);
-}
+export { fetchSessions };
 
 function printTable(sessions: SessionData[]): void {
   if (sessions.length === 0) {
@@ -34,30 +13,47 @@ function printTable(sessions: SessionData[]): void {
     return;
   }
 
-  console.log();
-  console.log(
-    chalk.bold(
-      `  ${"Name".padEnd(20)} ${"Owner".padEnd(12)} ${"Type".padEnd(8)} ${"Last Active".padEnd(14)} Created`
-    )
-  );
-  console.log(chalk.dim("  " + "─".repeat(76)));
-
   const sorted = [...sessions].sort(
     (a, b) => (parseInt(b.last_activity, 10) || 0) - (parseInt(a.last_activity, 10) || 0)
   );
 
-  for (const s of sorted) {
-    const age = activityAge(s.last_activity);
-    const stale = age > 3 * 86400;
-    const nameStr = stale ? chalk.yellow(s.name.padEnd(20)) : chalk.cyan(s.name.padEnd(20));
-    const activeStr = stale
-      ? chalk.yellow(relativeTime(s.last_activity).padEnd(14))
-      : relativeTime(s.last_activity).padEnd(14);
+  // Group into active, idle, stale
+  const active: SessionData[] = [];
+  const idle: SessionData[] = [];
+  const stale: SessionData[] = [];
 
-    console.log(
-      `  ${nameStr} ${s.owner.padEnd(12)} ${s.type.padEnd(8)} ${activeStr} ${s.created_at}`
-    );
+  for (const s of sorted) {
+    const count = parseInt(s.client_count || "0", 10);
+    const age = activityAge(s.last_activity);
+    if (count > 0) {
+      active.push(s);
+    } else if (age >= 3 * 86400) {
+      stale.push(s);
+    } else {
+      idle.push(s);
+    }
   }
+
+  const printGroup = (label: string, items: SessionData[], color: (s: string) => string) => {
+    if (items.length === 0) return;
+    console.log();
+    console.log(`  ${color(label)}`);
+    console.log(chalk.dim("  " + "─".repeat(76)));
+    for (const s of items) {
+      const count = parseInt(s.client_count || "0", 10);
+      const nameStr = color(s.name.padEnd(20));
+      const activeStr = color(relativeTime(s.last_activity).padEnd(14));
+      const countStr = count > 0 ? chalk.green(` ${count} attached`) : "";
+      console.log(
+        `  ${nameStr} ${s.owner.padEnd(12)} ${s.type.padEnd(8)} ${activeStr}${countStr}`
+      );
+    }
+  };
+
+  printGroup("Active", active, chalk.green);
+  printGroup("Idle", idle, (s) => s);
+  printGroup("Stale (3+ days)", stale, chalk.yellow);
+
   console.log();
 }
 
@@ -109,15 +105,15 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
     if (action === "end") {
       // Build filter options dynamically
       const mine = sessions.filter((s) => s.owner === npdevUser);
-      const stale = sessions.filter((s) => activityAge(s.last_activity) > 3 * 86400);
+      const staleSessions = sessions.filter((s) => activityAge(s.last_activity) > 3 * 86400);
       const owners = uniqueOwners(sessions);
 
       const filterOptions: { value: string; label: string; hint?: string }[] = [];
       if (mine.length > 0) {
         filterOptions.push({ value: "mine", label: "My sessions", hint: `${mine.length}` });
       }
-      if (stale.length > 0) {
-        filterOptions.push({ value: "stale", label: "Inactive 3+ days", hint: `${stale.length}` });
+      if (staleSessions.length > 0) {
+        filterOptions.push({ value: "stale", label: "Inactive 3+ days", hint: `${staleSessions.length}` });
       }
       if (owners.length > 1) {
         filterOptions.push({ value: "by-owner", label: "By owner..." });
@@ -137,7 +133,7 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
         if (filter === "mine") {
           filtered = mine;
         } else if (filter === "stale") {
-          filtered = stale;
+          filtered = staleSessions;
         } else if (filter === "by-owner") {
           const owner = await p.select({
             message: "Select owner",
@@ -161,9 +157,9 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
         message: "Select sessions to end (space to toggle)",
         options: sorted.map((s) => {
           const age = activityAge(s.last_activity);
-          const stale = age > 3 * 86400;
+          const isStale = age > 3 * 86400;
           const timeStr = relativeTime(s.last_activity);
-          const activeLabel = stale ? chalk.yellow(timeStr) : chalk.dim(timeStr);
+          const activeLabel = isStale ? chalk.yellow(timeStr) : chalk.dim(timeStr);
           return {
             value: s.name,
             label: `${s.name} ${chalk.dim("·")} ${s.owner} ${chalk.dim("·")} ${activeLabel}`,
