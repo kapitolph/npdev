@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-NPDEV_VERSION="0.5.0"
+NPDEV_VERSION="0.6.0"
 GITHUB_REPO="kapitolph/dev-vps"
 NPDEV_DIR="$HOME/.npdev"
 CONFIG_FILE="$NPDEV_DIR/config"
@@ -331,8 +331,41 @@ cmd_update() {
     die "Failed to fetch machines.yaml from GitHub"
   fi
 
+  # Detect platform and try to download compiled binary from GitHub releases
+  local os arch platform
+  case "$(uname -s)" in
+    Darwin) os="darwin" ;;
+    Linux)  os="linux" ;;
+    *)      os="" ;;
+  esac
+  case "$(uname -m)" in
+    arm64|aarch64) arch="arm64" ;;
+    x86_64)        arch="x64" ;;
+    *)             arch="" ;;
+  esac
+  platform="${os}-${arch}"
+
   local self_path
   self_path="$(realpath "${BASH_SOURCE[0]}")"
+
+  if [[ -n "$os" ]] && [[ -n "$arch" ]]; then
+    info "Downloading npdev-${platform} from GitHub releases..."
+    local tmp_bin
+    tmp_bin=$(mktemp)
+    if curl -fsSL -o "$tmp_bin" \
+      "https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${platform}" 2>/dev/null \
+      && [[ -s "$tmp_bin" ]]; then
+      mv "$tmp_bin" "$self_path"
+      chmod +x "$self_path"
+      ok "npdev binary updated (${platform})"
+      ok "npdev is now the compiled interactive CLI. Run 'npdev' to try it!"
+      return
+    fi
+    rm -f "$tmp_bin"
+    info "No compiled binary available yet — falling back to script update"
+  fi
+
+  # Fallback: update the bash script
   local new_script
   new_script=$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/client/npdev" 2>/dev/null)
   if [[ -n "$new_script" ]]; then

@@ -77,7 +77,7 @@ Run the client installer from the repo:
 bash client/setup.sh
 ```
 
-This creates `~/.npdev/config` and symlinks the `npdev` CLI to `~/.local/bin/npdev`.
+This downloads the compiled `npdev` binary to `~/.local/bin/npdev` and copies `machines.yaml` to `~/.npdev/`.
 
 If `~/.local/bin` is not in your PATH, the script will tell you how to add it.
 
@@ -126,7 +126,7 @@ After completing all steps, print a concise summary:
 ✓ Connection:   Tested OK
 
 Quick reference:
-  npdev                     → Quick shell on VPS
+  npdev                     → Interactive menu
   npdev my-session          → Create/join tmux session (pair programming!)
   npdev list                → Show all sessions
   npdev end my-session      → Kill a session
@@ -139,5 +139,5 @@ If a developer ever needs to remove this setup:
 - Delete SSH key: `rm -rf ~/.ssh/vps/`
 - Remove host entries from `~/.ssh/config`
 - Remove config: `rm -rf ~/.npdev/`
-- Remove symlink: `rm ~/.local/bin/npdev`
+- Remove binary: `rm ~/.local/bin/npdev`
 - Remove the host key: `ssh-keygen -R <host>`

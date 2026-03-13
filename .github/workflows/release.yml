@@ -1,0 +1,72 @@
+name: Build and Release npdev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'client/interactive/**'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: client/interactive
+        run: bun install --frozen-lockfile
+
+      - name: Extract version
+        id: version
+        working-directory: client/interactive
+        run: |
+          VERSION=$(grep 'NPDEV_VERSION' src/lib/version.ts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        working-directory: client/interactive
+        run: |
+          mkdir -p dist
+          bun build src/index.ts --compile --target=bun-linux-x64 --outfile dist/npdev-linux-x64
+          bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/npdev-darwin-arm64
+          bun build src/index.ts --compile --target=bun-darwin-x64 --outfile dist/npdev-darwin-x64
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: npdev v${{ steps.version.outputs.version }}
+          body: |
+            ## npdev v${{ steps.version.outputs.version }}
+
+            Compiled Bun binaries for the interactive npdev CLI.
+
+            ### Install / Update
+            ```bash
+            npdev update
+            ```
+
+            Or fresh install:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/client/setup.sh | bash
+            ```
+
+            ### Binaries
+            | Platform | File |
+            |----------|------|
+            | Linux x64 | `npdev-linux-x64` |
+            | macOS Apple Silicon | `npdev-darwin-arm64` |
+            | macOS Intel | `npdev-darwin-x64` |
+          make_latest: true
+          files: |
+            client/interactive/dist/npdev-linux-x64
+            client/interactive/dist/npdev-darwin-arm64
+            client/interactive/dist/npdev-darwin-x64

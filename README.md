@@ -41,15 +41,18 @@ Detach without killing the session: `Ctrl+B, D`
 
 | Command | Description |
 |---|---|
-| `npdev` | Quick shell (no tmux session) |
+| `npdev` | Interactive menu (or quick shell if not a TTY) |
 | `npdev <name> [desc]` | Create or attach to named session |
 | `npdev list` | List all sessions |
 | `npdev end <name>` | End a session |
 | `npdev sync-keys` | Sync `keys/*.pub` from GitHub to VPS `authorized_keys` |
-| `npdev update` | Update npdev + machines config from GitHub |
+| `npdev update` | Update npdev binary + machines config from GitHub |
+| `npdev setup` | Set up developer identity (git + GitHub token) |
 | `npdev --machine <name>` | Select VPS (when multiple configured) |
 | `npdev --version` | Show version |
 | `npdev --help` | Full usage |
+
+The interactive menu (run `npdev` with no args) also includes session cleanup — interactively select and end old sessions, with a filter for your own vs all sessions.
 
 ## Adding a Developer
 
