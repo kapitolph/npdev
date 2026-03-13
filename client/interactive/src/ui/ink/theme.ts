@@ -65,6 +65,11 @@ export interface Theme {
   buttonFocusBg: string;
   tabActive: string;
   tabInactive: string;
+  // Panel tokens
+  screenBg: string;
+  panelBg: string;
+  panelBorder: string;
+  panelBorderFocused: string;
   // Context badge
   contextBadge: { label: string; color: string };
 }
@@ -89,12 +94,28 @@ export function getTheme(context: "remote" | "local"): Theme {
     buttonFocusBg: accent,
     tabActive: accent,
     tabInactive: palette.overlay1,
+    // Panel tokens
+    screenBg: palette.crust,
+    panelBg: palette.base,
+    panelBorder: palette.surface2,
+    panelBorderFocused: accent,
     // Context badge
     contextBadge:
       context === "local"
         ? { label: "VPS", color: palette.teal }
         : { label: "REMOTE", color: palette.mauve },
   };
+}
+
+// Unicode Math Sans-Serif Bold converter for button labels
+export function toBold(str: string): string {
+  return [...str].map(c => {
+    const code = c.charCodeAt(0);
+    if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D5D4 + (code - 65));  // A-Z
+    if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D5EE + (code - 97)); // a-z
+    if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7EC + (code - 48));  // 0-9
+    return c;
+  }).join("");
 }
 
 // Status indicators

@@ -13,6 +13,7 @@ interface Props {
   width: number;
   scrollOffset: number;
   maxVisible: number;
+  focused?: boolean;
 }
 
 export function TeamSection({
@@ -23,6 +24,7 @@ export function TeamSection({
   width,
   scrollOffset,
   maxVisible,
+  focused = false,
 }: Props) {
   if (sessions.length === 0) return null;
 
@@ -53,9 +55,19 @@ export function TeamSection({
   const belowCount = Math.max(0, rows.length - scrollOffset - maxVisible);
 
   return (
-    <Box flexDirection="column">
-      <Text color={selectable ? theme.accent : theme.overlay1} dimColor={!selectable}>
-        ── Team ({sessions.length}) ──
+    <Box
+      flexDirection="column"
+      flexGrow={1}
+      backgroundColor={theme.panelBg}
+      borderStyle="single"
+      borderLeft
+      borderTop={false}
+      borderBottom={false}
+      borderRight={false}
+      borderColor={focused ? theme.panelBorderFocused : theme.panelBorder}
+    >
+      <Text color={focused ? theme.accent : theme.overlay1} bold={focused}>
+        {" "}Team ({sessions.length})
       </Text>
       {aboveCount > 0 && (
         <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>

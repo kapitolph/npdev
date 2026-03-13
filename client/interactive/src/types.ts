@@ -17,6 +17,7 @@ export interface SessionData {
   created_at: string;
   last_activity: string;
   client_count: string;
+  attached_users?: string;
 }
 
 export interface VersionInfo {

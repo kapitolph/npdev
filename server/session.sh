@@ -304,14 +304,30 @@ cmd_session_data() {
     local client_count
     client_count=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_attached}' 2>/dev/null || echo "0")
 
+    # Get attached developer names
+    local attached_users=""
+    local client_pids
+    client_pids=$(tmux -f "$TMUX_CONF" list-clients -t "$sname" -F '#{client_pid}' 2>/dev/null) || true
+    for cpid in $client_pids; do
+      local child target dev_name=""
+      child=$(pgrep -P "$cpid" 2>/dev/null | head -1) || true
+      target=${child:-$cpid}
+      dev_name=$(tr '\0' '\n' < /proc/"$target"/environ 2>/dev/null \
+        | sed -n 's/^GIT_AUTHOR_NAME=//p' | head -1) || true
+      if [[ -n "$dev_name" ]]; then
+        dev_name=$(echo "$dev_name" | tr '[:upper:]' '[:lower:]')
+        attached_users="${attached_users:+$attached_users,}$dev_name"
+      fi
+    done
+
     # Escape JSON-unsafe characters in description
     local safe_desc
     safe_desc=$(printf '%s' "$sdesc" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037')
 
     [[ $first -eq 0 ]] && printf ','
     first=0
-    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s","client_count":"%s"}' \
-      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity" "$client_count"
+    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s","client_count":"%s","attached_users":"%s"}' \
+      "$sname" "$stype" "$safe_desc" "$sowner" "$screated" "$last_activity" "$client_count" "$attached_users"
   done <<< "$entries"
   printf ']\n'
 }

@@ -7,7 +7,6 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { getTheme } from "./theme";
 import { isOnVPS } from "../../lib/config";
 import { cmdStart } from "../../commands/start";
-import { cmdSessions } from "../../commands/sessions";
 import { cmdSetup } from "../../commands/setup";
 import { cmdUpdate } from "../../commands/update";
 
@@ -20,7 +19,8 @@ export async function renderInkDashboard(
   // Bun workaround: stdin must be resumed for Ink to read input
   process.stdin.resume();
 
-  const theme = getTheme(isOnVPS() ? "local" : "remote");
+  const onVPS = isOnVPS();
+  const theme = getTheme(onVPS ? "local" : "remote");
 
   return new Promise<void>((resolve, reject) => {
     let instance: ReturnType<typeof render>;
@@ -39,10 +39,6 @@ export async function renderInkDashboard(
           case "join-team":
             await cmdStart(machine, action.sessionName, npdevUser);
             resolve();
-            break;
-          case "manage":
-            await cmdSessions(machine, npdevUser);
-            renderInkDashboard(machine, npdevUser, version, machineOverride).then(resolve, reject);
             break;
           case "setup":
             await cmdSetup(machineOverride);
@@ -69,6 +65,7 @@ export async function renderInkDashboard(
           machine,
           npdevUser,
           version,
+          isOnVPS: onVPS,
           onAction: handleAction,
         })
       )

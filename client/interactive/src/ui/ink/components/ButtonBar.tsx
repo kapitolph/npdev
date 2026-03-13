@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../context/ThemeContext";
+import { toBold } from "../theme";
 
 export interface ButtonDef {
   key: string;
@@ -17,27 +18,32 @@ interface Props {
 export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
   const theme = useTheme();
 
+  const borderColor = isFocusZone ? theme.panelBorderFocused : theme.panelBorder;
+
   return (
-    <Box paddingX={1} gap={1} flexWrap="wrap" dimColor={!isFocusZone}>
+    <Box
+      paddingLeft={1}
+      gap={2}
+      flexWrap="wrap"
+      borderStyle="single"
+      borderLeft
+      borderTop={false}
+      borderBottom={false}
+      borderRight={false}
+      borderColor={borderColor}
+    >
       {buttons.map((btn, i) => {
-        const isFocused = i === focusedIndex;
-        const isActive = isFocused && isFocusZone;
+        const isFocused = i === focusedIndex && isFocusZone;
 
         return (
           <Box key={btn.key}>
+            <Text color={theme.overlay0}>{btn.key}</Text>
+            <Text> </Text>
             <Text
-              backgroundColor={isActive ? theme.buttonFocusBg : isFocused ? undefined : theme.buttonBg}
-              color={isActive ? theme.base : theme.subtext0}
-              bold={isActive}
+              color={isFocused ? theme.accent : theme.subtext0}
+              bold={isFocused}
             >
-              {" "}
-              <Text
-                color={isActive ? theme.base : theme.dimmed}
-                bold={false}
-              >
-                {btn.key}
-              </Text>
-              {" "}{btn.label}{" "}
+              {isFocused ? `▸ ${toBold(btn.label.toUpperCase())}` : toBold(btn.label.toUpperCase())}
             </Text>
           </Box>
         );

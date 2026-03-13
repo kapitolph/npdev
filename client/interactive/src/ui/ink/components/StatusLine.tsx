@@ -4,26 +4,40 @@ import { useTheme } from "../context/ThemeContext";
 
 interface Props {
   mode: string;
-  activeTab: "sessions" | "team";
+  activePanel: "mine" | "team";
   staleCount: number;
   sessionCount: number;
   confirmStale?: boolean;
+  confirmEndName?: string;
   cols: number;
 }
 
 export function StatusLine({
   mode,
-  activeTab,
+  activePanel,
   staleCount,
   sessionCount,
   confirmStale,
+  confirmEndName,
   cols,
 }: Props) {
   const theme = useTheme();
 
   let content: React.ReactNode;
 
-  if (confirmStale) {
+  if (confirmEndName) {
+    content = (
+      <Text>
+        <Text color={theme.yellow}>
+          End '{confirmEndName}'?{" "}
+        </Text>
+        <Text color={theme.accent} bold>[y]</Text>
+        <Text color={theme.subtext0}> yes  </Text>
+        <Text color={theme.accent} bold>[n]</Text>
+        <Text color={theme.subtext0}> no</Text>
+      </Text>
+    );
+  } else if (confirmStale) {
     content = (
       <Text>
         <Text color={theme.yellow}>
@@ -39,7 +53,7 @@ export function StatusLine({
     content = (
       <Text color={theme.overlay1}>Enter to confirm · Esc to cancel</Text>
     );
-  } else if (activeTab === "team") {
+  } else if (activePanel === "team") {
     content = (
       <Text color={theme.overlay1}>Viewing team sessions · <Text color={theme.accent}>t</Text> to switch back</Text>
     );
@@ -56,16 +70,15 @@ export function StatusLine({
     content = (
       <Text color={theme.overlay1}>
         {sessionCount > 0
-          ? `↑↓ navigate · ↵ select · tab switch focus · ←→ buttons`
-          : `n new session · s setup · q quit`}
+          ? `↑↓ navigate · ←→ panels · ↵ select · d end`
+          : `n new session · q quit`}
       </Text>
     );
   }
 
   return (
-    <Box width={cols} flexDirection="column">
-      <Text color={theme.surface2}>{"─".repeat(Math.max(1, cols - 2))}</Text>
-      <Box paddingX={1}>{content}</Box>
+    <Box width={cols} paddingX={1}>
+      {content}
     </Box>
   );
 }

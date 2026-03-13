@@ -44,7 +44,7 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout,
     <Box
       flexDirection="column"
       width={width}
-      backgroundColor={isSelected ? theme.highlight : undefined}
+      backgroundColor={isSelected ? theme.surface0 : undefined}
     >
       {/* Line 1 */}
       <Box>
@@ -65,7 +65,10 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout,
           {relativeTime(session.last_activity)}
         </Text>
         {isActive && (
-          <Text color={theme.green}> {icons.attached} {count}</Text>
+          <Text color={theme.green}>
+            {" "}{icons.attached}{" "}
+            {session.attached_users || String(count)}
+          </Text>
         )}
       </Box>
       {/* Line 2: description */}
