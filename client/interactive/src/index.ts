@@ -28,6 +28,7 @@ Usage:
   npdev update                    Update npdev + machines from GitHub
   npdev --user <name> ...         Override developer identity
   npdev --machine <name> ...      Select VPS when multiple configured
+  npdev --old                     Use classic menu (fallback)
   npdev --version                 Show version
   npdev --help                    Show this help
 
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let machineOverride: string | undefined;
   let userOverride: string | undefined;
+  let useOldMenu = false;
   const remaining: string[] = [];
 
   // Parse global flags
@@ -54,6 +56,9 @@ async function main(): Promise<void> {
       case "--user":
         userOverride = args[++i];
         if (!userOverride) { console.error("--user requires a name"); process.exit(1); }
+        break;
+      case "--old":
+        useOldMenu = true;
         break;
       case "--version":
       case "-v":
@@ -83,7 +88,7 @@ async function main(): Promise<void> {
 
   // Load config
   const config = await loadConfig();
-  let npdevUser = userOverride || config.npdevUser;
+  let npdevUser = userOverride || config.npdevUser || (isOnVPS() ? process.env.GIT_AUTHOR_NAME : undefined) || "";
 
   // Check machines exist
   const machines = await loadMachines();
@@ -118,7 +123,12 @@ async function main(): Promise<void> {
 
       const version = await versionPromise;
       const machine = await getMachine();
-      await mainMenu(machine, npdevUser, version, machineOverride);
+      if (useOldMenu) {
+        await mainMenu(machine, npdevUser, version, machineOverride);
+      } else {
+        const { renderInkDashboard } = await import("./ui/ink/render");
+        await renderInkDashboard(machine, npdevUser, version, machineOverride);
+      }
     } else {
       // Non-TTY: quick shell (preserves bash behavior)
       if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
