@@ -3,7 +3,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { npdevDir } from "./config";
 import type { VersionInfo } from "../types";
 
-export const NPDEV_VERSION = "1.1.2";
+export const NPDEV_VERSION = "1.1.3";
 const GITHUB_REPO = "kapitolph/npdev";
 
 function isNewer(a: string, b: string): boolean {
