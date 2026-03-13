@@ -1,6 +1,6 @@
 import type { VersionInfo } from "../types";
 
-export const NPDEV_VERSION = "1.1.4";
+export const NPDEV_VERSION = "1.1.5";
 const GITHUB_REPO = "kapitolph/npdev";
 
 function isNewer(a: string, b: string): boolean {
