@@ -54,8 +54,9 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const currentList = activePanel === "mine" ? mine : team;
   const maxItems = currentList.length;
 
-  // Viewport windowing — header ~9 lines, status 1, padding 2-3
-  const maxVisible = Math.max(3, rows - 14);
+  // Viewport windowing — header ~9, buttons ~3*numButtons, status 1, section header 3, padding
+  const buttonLines = buttons.length * 3; // each button is 3 lines (border top, content, border bottom)
+  const maxVisible = Math.max(3, rows - 12 - buttonLines);
 
   // Move cursor and scroll offset together in one batch
   const moveCursor = useCallback(
@@ -209,11 +210,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         return;
       }
       if (key.leftArrow || key.rightArrow) {
-        // In wide mode, arrows switch to session panels
-        if (maxItems > 0) {
-          setCursorArea("sessions");
-        }
-        return;
+        return; // no-op in vertical button list
       }
       if (key.return) {
         buttons[focusedButton]?.action();
@@ -230,7 +227,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       if (key.upArrow || input === "k") {
         if (cursor === 0) {
           setCursorArea("actions");
-          setFocusedButton(0);
+          setFocusedButton(buttons.length - 1);
         } else {
           moveCursor(-1);
         }
@@ -380,25 +377,25 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         layout={layout}
         isOnVPS={isOnVPS}
       />
-      <Box flexDirection="row" flexGrow={1} paddingX={1}>
+      <Box paddingX={1}>
         <ButtonBar
           buttons={buttons}
           focusedIndex={focusedButton}
           isFocusZone={cursorArea === "actions"}
         />
-        <Box flexDirection="column" flexGrow={1} paddingLeft={1}>
-          {sessionPanels}
-          {state.mode === "new-session" && (
-            <Box paddingY={1}>
-              <TextInput
-                label="Session name:"
-                value={state.input}
-                error={state.error || undefined}
-                hint="Enter to confirm, Esc to cancel"
-              />
-            </Box>
-          )}
-        </Box>
+      </Box>
+      <Box flexDirection="column" flexGrow={1} paddingX={1}>
+        {sessionPanels}
+        {state.mode === "new-session" && (
+          <Box paddingY={1}>
+            <TextInput
+              label="Session name:"
+              value={state.input}
+              error={state.error || undefined}
+              hint="Enter to confirm, Esc to cancel"
+            />
+          </Box>
+        )}
       </Box>
       <StatusLine
         mode={state.mode}

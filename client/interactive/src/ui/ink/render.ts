@@ -44,12 +44,21 @@ export async function renderInkDashboard(
             await cmdSetup(machineOverride);
             renderInkDashboard(machine, npdevUser, version, machineOverride).then(resolve, reject);
             break;
-          case "update":
+          case "update": {
             await cmdUpdate();
-            renderInkDashboard(machine, npdevUser, version, machineOverride).then(resolve, reject);
-            break;
+            // Re-exec the (now-updated) binary so the new version is loaded
+            const args = process.argv.slice(1);
+            const child = Bun.spawn([process.execPath, ...args], {
+              stdin: "inherit",
+              stdout: "inherit",
+              stderr: "inherit",
+            });
+            const code = await child.exited;
+            process.exit(code);
+          }
           case "exit":
-            console.log("Bye!");
+            // Clear Ink output so terminal returns to previous state
+            process.stdout.write("\x1B[2J\x1B[H");
             process.exit(0);
         }
       } catch (err) {

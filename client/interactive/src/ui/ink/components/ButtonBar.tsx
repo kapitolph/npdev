@@ -19,25 +19,26 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
   const theme = useTheme();
 
   return (
-    <Box flexDirection="column" paddingX={1} gap={0}>
+    <Box flexDirection="column">
       {buttons.map((btn, i) => {
         const isFocused = i === focusedIndex && isFocusZone;
 
         return (
-          <Box
-            key={btn.key}
-            borderStyle="round"
-            borderColor={isFocused ? theme.accent : theme.surface1}
-            paddingX={1}
-          >
-            <Text color={isFocused ? theme.accent : theme.overlay0}>{btn.key}</Text>
-            <Text> </Text>
-            <Text
-              color={isFocused ? theme.accent : theme.subtext0}
-              bold={isFocused}
-            >
-              {toBold(btn.label.toUpperCase())}
+          <Box key={btn.key}>
+            <Text color={isFocused ? theme.accent : theme.surface2}>
+              {isFocused ? "▸" : " "}
             </Text>
+            <Text> </Text>
+            <Box
+              borderStyle="round"
+              borderColor={isFocused ? theme.accent : theme.surface1}
+              paddingX={1}
+            >
+              <Text color={isFocused ? theme.accent : theme.overlay0}>{btn.key}</Text>
+              <Text color={isFocused ? theme.accent : theme.subtext0}>
+                {" "}{toBold(btn.label.toUpperCase())}
+              </Text>
+            </Box>
           </Box>
         );
       })}
