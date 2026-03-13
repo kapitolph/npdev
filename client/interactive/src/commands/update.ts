@@ -1,5 +1,4 @@
 import * as p from "@clack/prompts";
-import { join } from "path";
 import { writeFile, chmod, mkdir, rename, unlink } from "fs/promises";
 import { MACHINES_FILE, npdevDir } from "../lib/config";
 const GITHUB_REPO = "kapitolph/npdev";
@@ -70,9 +69,6 @@ export async function cmdUpdate(): Promise<void> {
   } catch {
     s.stop("Failed to fetch binary (may not be released yet — using current version)");
   }
-
-  // Clear version cache so next run picks up fresh state
-  try { await unlink(join(npdevDir(), ".version-check")); } catch {}
 
   p.outro(`npdev is now at v${newVersion}`);
 }
