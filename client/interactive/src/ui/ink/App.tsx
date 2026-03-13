@@ -53,10 +53,35 @@ export function App({ machine, npdevUser, version, onAction }: Props) {
   // Viewport windowing
   const maxVisible = Math.max(3, rows - 8);
 
+  // Move cursor and scroll offset together in one batch to avoid cascading renders
+  const moveCursor = useCallback(
+    (delta: number) => {
+      setCursor((prev) => {
+        const next = Math.max(0, Math.min(prev + delta, maxItems - 1));
+        // Update scroll offset in the same tick
+        setScrollOffset((offset) => {
+          if (next < offset) return next;
+          if (next >= offset + maxVisible) return next - maxVisible + 1;
+          return offset;
+        });
+        return next;
+      });
+    },
+    [maxItems, maxVisible]
+  );
+
   // Clamp cursor when list size changes
   useEffect(() => {
-    setCursor((c) => Math.min(c, Math.max(0, maxItems - 1)));
-  }, [maxItems]);
+    setCursor((c) => {
+      const clamped = Math.min(c, Math.max(0, maxItems - 1));
+      setScrollOffset((offset) => {
+        if (clamped < offset) return clamped;
+        if (clamped >= offset + maxVisible) return clamped - maxVisible + 1;
+        return offset;
+      });
+      return clamped;
+    });
+  }, [maxItems, maxVisible]);
 
   // Default focus to buttons when list is empty
   useEffect(() => {
@@ -65,24 +90,9 @@ export function App({ machine, npdevUser, version, onAction }: Props) {
     }
   }, [maxItems, loading]);
 
-  // Keep scroll offset following cursor
-  useEffect(() => {
-    setScrollOffset((offset) => {
-      if (cursor < offset) return cursor;
-      if (cursor >= offset + maxVisible) return cursor - maxVisible + 1;
-      return offset;
-    });
-  }, [cursor, maxVisible]);
-
-  const clampCursor = useCallback(
-    (n: number) => Math.max(0, Math.min(n, maxItems - 1)),
-    [maxItems]
-  );
-
   const toggleTab = useCallback(() => {
     setActiveTab((t) => {
       const next = t === "sessions" ? "team" : "sessions";
-      // Only toggle if target has items
       if (next === "team" && team.length === 0) return t;
       return next;
     });
@@ -162,11 +172,11 @@ export function App({ machine, npdevUser, version, onAction }: Props) {
     // Navigation in list zone
     if (focusZone === "list") {
       if (input === "j" || key.downArrow) {
-        setCursor((c) => clampCursor(c + 1));
+        moveCursor(1);
         return;
       }
       if (input === "k" || key.upArrow) {
-        setCursor((c) => clampCursor(c - 1));
+        moveCursor(-1);
         return;
       }
       // Enter to select session
