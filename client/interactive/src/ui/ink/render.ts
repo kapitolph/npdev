@@ -1,8 +1,6 @@
 import { render } from "ink";
 import React from "react";
-import { cmdSetup } from "../../commands/setup";
 import { cmdStart } from "../../commands/start";
-import { cmdUpdate } from "../../commands/update";
 import { isOnVPS } from "../../lib/config";
 import type { Machine, VersionInfo } from "../../types";
 import type { AppAction } from "./App";
@@ -14,7 +12,6 @@ export async function renderInkDashboard(
   machine: Machine,
   npdevUser: string,
   version: VersionInfo,
-  machineOverride?: string,
 ): Promise<void> {
   // Bun workaround: stdin must be resumed for Ink to read input
   process.stdin.resume();
@@ -40,23 +37,11 @@ export async function renderInkDashboard(
             await cmdStart(machine, action.sessionName, npdevUser);
             resolve();
             break;
-          case "setup":
-            await cmdSetup(machineOverride);
-            renderInkDashboard(machine, npdevUser, version, machineOverride).then(resolve, reject);
+          case "update-done":
+            // Binary was replaced on disk — exit so user restarts with new version
+            process.stdout.write("\x1B[2J\x1B[H");
+            process.exit(0);
             break;
-          case "update": {
-            await cmdUpdate();
-            // Re-exec the (now-updated) binary so the new version is loaded
-            const args = process.argv.slice(1);
-            const child = Bun.spawn([process.execPath, ...args], {
-              stdin: "inherit",
-              stdout: "inherit",
-              stderr: "inherit",
-            });
-            const code = await child.exited;
-            process.exit(code);
-            break;
-          }
           case "exit":
             // Clear Ink output so terminal returns to previous state
             process.stdout.write("\x1B[2J\x1B[H");

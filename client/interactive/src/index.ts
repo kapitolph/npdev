@@ -139,7 +139,7 @@ async function main(): Promise<void> {
         await mainMenu(machine, npdevUser, version, machineOverride);
       } else {
         const { renderInkDashboard } = await import("./ui/ink/render");
-        await renderInkDashboard(machine, npdevUser, version, machineOverride);
+        await renderInkDashboard(machine, npdevUser, version);
       }
     } else {
       // Non-TTY: quick shell (preserves bash behavior)

@@ -6,19 +6,26 @@ import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
+import { NewSessionPage } from "./components/NewSessionPage";
 import { SessionList } from "./components/SessionList";
+import { SetupPage } from "./components/SetupPage";
 import { Spinner } from "./components/Spinner";
 import { StatusLine } from "./components/StatusLine";
 import { TabBar } from "./components/TabBar";
 import { TeamSection } from "./components/TeamSection";
-import { TextInput } from "./components/TextInput";
+import { UpdatePage } from "./components/UpdatePage";
 import { useTheme } from "./context/ThemeContext";
 import { useSessions } from "./hooks/useSessions";
 import { useTerminalSize } from "./hooks/useTerminalSize";
 
-type AppState =
-  | { mode: "dashboard" }
-  | { mode: "new-session"; input: string; error: string }
+type Route =
+  | { page: "dashboard" }
+  | { page: "new-session" }
+  | { page: "update" }
+  | { page: "setup" };
+
+type DashboardMode =
+  | { mode: "normal" }
   | { mode: "confirm-stale" }
   | { mode: "confirm-end"; sessionName: string };
 
@@ -26,8 +33,7 @@ export type AppAction =
   | { type: "resume"; sessionName: string }
   | { type: "new-session"; sessionName: string }
   | { type: "join-team"; sessionName: string }
-  | { type: "setup" }
-  | { type: "update" }
+  | { type: "update-done" }
   | { type: "exit" };
 
 interface Props {
@@ -43,9 +49,10 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const { cols, rows, layout } = useTerminalSize();
   const theme = useTheme();
 
-  const [state, setState] = useState<AppState>({ mode: "dashboard" });
+  const [route, setRoute] = useState<Route>({ page: "dashboard" });
+  const [dashMode, setDashMode] = useState<DashboardMode>({ mode: "normal" });
   const [activePanel, setActivePanel] = useState<"mine" | "team">("mine");
-  const [cursorArea, setCursorArea] = useState<"actions" | "sessions">("sessions");
+  const [cursorArea, setCursorArea] = useState<"actions" | "sessions">("actions");
   const [cursor, setCursor] = useState(0);
   const [focusedButton, setFocusedButton] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -54,10 +61,8 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const currentList = activePanel === "mine" ? mine : team;
   const maxItems = currentList.length;
 
-  // Button count estimate for viewport calculation (must match actual buttons below)
-  const buttonCount = 3 + (stale.length > 0 ? 1 : 0) + (!isOnVPS ? 2 : 0);
-  const buttonLines = buttonCount * 3;
-  const maxVisible = Math.max(3, rows - 12 - buttonLines);
+  // Buttons are horizontal — 1 line each (3 with border top/bottom)
+  const maxVisible = Math.max(3, rows - 14);
 
   // Move cursor and scroll offset together in one batch
   const moveCursor = useCallback(
@@ -88,13 +93,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     });
   }, [maxItems, maxVisible]);
 
-  // Default cursor to actions when list is empty
-  useEffect(() => {
-    if (maxItems === 0 && !loading) {
-      setCursorArea("actions");
-    }
-  }, [maxItems, loading]);
-
   const switchPanel = useCallback(() => {
     setActivePanel((p) => {
       const next = p === "mine" ? "team" : "mine";
@@ -118,22 +116,26 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     {
       key: "n",
       label: "New",
-      action: () => setState({ mode: "new-session", input: "", error: "" }),
+      action: () => setRoute({ page: "new-session" }),
     },
     ...(stale.length > 0
       ? [
           {
             key: "c",
             label: `Clean ${stale.length}`,
-            action: () => setState({ mode: "confirm-stale" }),
+            action: () => setDashMode({ mode: "confirm-stale" }),
           },
         ]
       : []),
     { key: "r", label: "Refresh", action: refresh },
     ...(!isOnVPS
       ? [
-          { key: "s", label: "Setup", action: () => onAction({ type: "setup" }) },
-          { key: "u", label: "Update", action: () => onAction({ type: "update" }) },
+          { key: "s", label: "Setup", action: () => setRoute({ page: "setup" }) },
+          {
+            key: "u",
+            label: "Update",
+            action: () => setRoute({ page: "update" }),
+          },
         ]
       : []),
     { key: "q", label: "Quit", action: () => onAction({ type: "exit" }) },
@@ -145,60 +147,33 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   }, [buttons.length]);
 
   useInput((input, key) => {
+    // Only handle input on dashboard page
+    if (route.page !== "dashboard") return;
     if (loading) return;
 
-    // New session text input mode
-    if (state.mode === "new-session") {
-      if (key.escape) {
-        setState({ mode: "dashboard" });
-        return;
-      }
-      if (key.return) {
-        const name = state.input.trim();
-        if (!name) {
-          setState({ ...state, error: "Name required" });
-          return;
-        }
-        if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-          setState({ ...state, error: "Only letters, numbers, hyphens, underscores" });
-          return;
-        }
-        onAction({ type: "new-session", sessionName: name });
-        return;
-      }
-      if (key.backspace || key.delete) {
-        setState({ ...state, input: state.input.slice(0, -1), error: "" });
-        return;
-      }
-      if (input && !key.ctrl && !key.meta) {
-        setState({ ...state, input: state.input + input, error: "" });
-      }
-      return;
-    }
-
     // Confirm stale cleanup
-    if (state.mode === "confirm-stale") {
+    if (dashMode.mode === "confirm-stale") {
       if (input === "y" || input === "Y") {
-        setState({ mode: "dashboard" });
+        setDashMode({ mode: "normal" });
         Promise.all(stale.map((s) => endSession(s.name))).catch(() => {});
         return;
       }
       if (key.escape || input === "n" || input === "N") {
-        setState({ mode: "dashboard" });
+        setDashMode({ mode: "normal" });
       }
       return;
     }
 
     // Confirm end single session
-    if (state.mode === "confirm-end") {
+    if (dashMode.mode === "confirm-end") {
       if (input === "y" || input === "Y") {
-        const name = state.sessionName;
-        setState({ mode: "dashboard" });
+        const name = dashMode.sessionName;
+        setDashMode({ mode: "normal" });
         endSession(name);
         return;
       }
       if (key.escape || input === "n" || input === "N") {
-        setState({ mode: "dashboard" });
+        setDashMode({ mode: "normal" });
       }
       return;
     }
@@ -209,22 +184,21 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       return;
     }
 
-    // Navigation in actions row
+    // Navigation in actions row (horizontal)
     if (cursorArea === "actions") {
-      if (key.upArrow || input === "k") {
+      if (key.leftArrow) {
         setFocusedButton((f) => Math.max(0, f - 1));
         return;
       }
+      if (key.rightArrow) {
+        setFocusedButton((f) => Math.min(buttons.length - 1, f + 1));
+        return;
+      }
       if (key.downArrow || input === "j") {
-        if (focusedButton < buttons.length - 1) {
-          setFocusedButton((f) => f + 1);
-        } else if (maxItems > 0) {
+        if (maxItems > 0) {
           setCursorArea("sessions");
         }
         return;
-      }
-      if (key.leftArrow || key.rightArrow) {
-        return; // no-op in vertical button list
       }
       if (key.return) {
         buttons[focusedButton]?.action();
@@ -241,7 +215,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       if (key.upArrow || input === "k") {
         if (cursor === 0) {
           setCursorArea("actions");
-          setFocusedButton(buttons.length - 1);
         } else {
           moveCursor(-1);
         }
@@ -262,13 +235,12 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       }
       // d to end session
       if (input === "d" && maxItems > 0 && cursor < maxItems) {
-        setState({ mode: "confirm-end", sessionName: currentList[cursor].name });
+        setDashMode({ mode: "confirm-end", sessionName: currentList[cursor].name });
         return;
       }
     }
 
     // Global shortcut keys (work in any cursor area)
-    // t for quick panel toggle
     if (input === "t") {
       switchPanel();
       return;
@@ -276,14 +248,38 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     const shortcut = buttons.find((b) => b.key === input);
     if (shortcut) {
       shortcut.action();
-      return;
     }
   });
 
-  const contentWidth = cols - 4; // account for padding
-  const isEmpty = mine.length === 0 && team.length === 0;
+  // --- Route: New Session ---
+  if (route.page === "new-session") {
+    return (
+      <NewSessionPage
+        onSubmit={(name) => onAction({ type: "new-session", sessionName: name })}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
 
-  // Derive activeTab for TabBar
+  // --- Route: Update ---
+  if (route.page === "update") {
+    return <UpdatePage onDone={() => onAction({ type: "update-done" })} />;
+  }
+
+  // --- Route: Setup ---
+  if (route.page === "setup") {
+    return (
+      <SetupPage
+        machine={machine}
+        onDone={() => setRoute({ page: "dashboard" })}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
+  // --- Route: Dashboard ---
+  const contentWidth = cols - 4;
+  const isEmpty = mine.length === 0 && team.length === 0;
   const activeTab = activePanel === "mine" ? ("sessions" as const) : ("team" as const);
 
   // Loading state
@@ -305,7 +301,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     );
   }
 
-  // Session area based on layout
   const panelFocusedMine = cursorArea === "sessions" && activePanel === "mine";
   const panelFocusedTeam = cursorArea === "sessions" && activePanel === "team";
 
@@ -314,7 +309,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       <EmptyState />
     </Box>
   ) : layout === "wide" ? (
-    // Wide: side by side
     <Box flexDirection="row" gap={2} flexGrow={1}>
       {mine.length > 0 ? (
         <SessionList
@@ -346,7 +340,6 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       )}
     </Box>
   ) : (
-    // Normal/narrow: tabbed
     <Box flexDirection="column" flexGrow={1}>
       <TabBar activeTab={activeTab} sessionCount={mine.length} teamCount={team.length} />
       {activePanel === "mine" ? (
@@ -375,7 +368,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     </Box>
   );
 
-  const confirmEndName = state.mode === "confirm-end" ? state.sessionName : undefined;
+  const confirmEndName = dashMode.mode === "confirm-end" ? dashMode.sessionName : undefined;
 
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
@@ -387,7 +380,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         layout={layout}
         isOnVPS={isOnVPS}
       />
-      <Box paddingX={1}>
+      <Box paddingX={1} paddingBottom={1}>
         <ButtonBar
           buttons={buttons}
           focusedIndex={focusedButton}
@@ -396,23 +389,19 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       </Box>
       <Box flexDirection="column" flexGrow={1} paddingX={1}>
         {sessionPanels}
-        {state.mode === "new-session" && (
-          <Box paddingY={1}>
-            <TextInput
-              label="Session name:"
-              value={state.input}
-              error={state.error || undefined}
-              hint="Enter to confirm, Esc to cancel"
-            />
-          </Box>
-        )}
       </Box>
       <StatusLine
-        mode={state.mode}
+        mode={
+          dashMode.mode === "confirm-stale"
+            ? "confirm-stale"
+            : dashMode.mode === "confirm-end"
+              ? "confirm-end"
+              : "dashboard"
+        }
         activePanel={activePanel}
         staleCount={stale.length}
         sessionCount={mine.length + team.length}
-        confirmStale={state.mode === "confirm-stale"}
+        confirmStale={dashMode.mode === "confirm-stale"}
         confirmEndName={confirmEndName}
         cols={cols}
       />
