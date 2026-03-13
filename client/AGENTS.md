@@ -30,6 +30,8 @@ If generating a new key:
 
 After the key is ready, print the full public key contents.
 
+**IMPORTANT**: Take note of the exact path to the key used (whether newly generated or reused). You MUST use this same path as the `IdentityFile` in Step 2. If the developer chose to reuse an existing key (e.g. `~/.ssh/id_ed25519`), that path — not `~/.ssh/vps/id_<name>_ed25519` — must go in the SSH config.
+
 ## Step 2: SSH Config
 
 Read the `machines.yaml` file in this repo to get the VPS host and user details. For each machine, create an SSH config entry.
@@ -48,6 +50,17 @@ Host np-dev-1
   IdentitiesOnly yes
   ServerAliveInterval 60
   ServerAliveCountMax 3
+```
+
+**CRITICAL — `IdentitiesOnly yes` and correct `IdentityFile`**:
+- `IdentitiesOnly yes` is **required**. Without it, SSH tries every key in the agent and on disk before using the one specified. If the developer has multiple SSH keys (GitHub, other servers, etc.), SSH may exhaust its authentication attempts with the wrong keys and get "Permission denied" before ever trying the VPS key. This is the #1 cause of "Permission denied" issues for new developers.
+- `IdentityFile` **must match the actual key path from Step 1**. If the developer reused an existing key (e.g. `~/.ssh/id_ed25519`), use that path here — not the default `~/.ssh/vps/id_<name>_ed25519` template.
+
+After writing the config, **verify it is correct**:
+```bash
+# Confirm IdentitiesOnly is set and IdentityFile points to a file that exists
+grep -A5 "Host np-dev" ~/.ssh/config
+ls -la <the IdentityFile path from the config>
 ```
 
 Also add the VPS host key to known_hosts:
