@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { join } from "path";
 import { writeFile, chmod, mkdir } from "fs/promises";
 import { MACHINES_FILE, npdevDir } from "../lib/config";
-const GITHUB_REPO = "kapitolph/dev-vps";
+const GITHUB_REPO = "kapitolph/npdev";
 
 export async function cmdUpdate(): Promise<void> {
   p.intro("Updating npdev");

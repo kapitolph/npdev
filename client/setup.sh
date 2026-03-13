@@ -6,7 +6,7 @@
 #   bash client/setup.sh
 #
 # Usage (curl-pipe, no clone needed):
-#   curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/client/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/client/setup.sh | bash
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ ok()    { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 warn()  { printf '\033[1;33m  ⚠ %s\033[0m\n' "$*"; }
 die()   { printf '\033[1;31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 
-GITHUB_REPO="kapitolph/dev-vps"
+GITHUB_REPO="kapitolph/npdev"
 NPDEV_DIR="$HOME/.npdev"
 INSTALL_DIR="$HOME/.local/bin"
 

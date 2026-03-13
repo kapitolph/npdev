@@ -2,7 +2,7 @@ import chalk from "chalk";
 import type { Machine } from "../types";
 import { sshExec } from "../lib/ssh";
 
-const GITHUB_REPO = "kapitolph/dev-vps";
+const GITHUB_REPO = "kapitolph/npdev";
 
 export async function cmdSyncKeys(machine: Machine): Promise<void> {
   console.log(`Fetching keys from GitHub (${GITHUB_REPO})...`);

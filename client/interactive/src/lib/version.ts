@@ -4,7 +4,7 @@ import { npdevDir } from "./config";
 import type { VersionInfo } from "../types";
 
 export const NPDEV_VERSION = "1.1.0";
-const GITHUB_REPO = "kapitolph/dev-vps";
+const GITHUB_REPO = "kapitolph/npdev";
 
 function isNewer(a: string, b: string): boolean {
   const pa = a.split(".").map(Number);

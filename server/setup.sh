@@ -6,7 +6,7 @@
 #   sudo bash server/setup.sh
 #
 # Usage (curl-pipe, standalone):
-#   curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/server/setup.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/server/setup.sh | sudo bash
 
 set -euo pipefail
 
@@ -245,7 +245,7 @@ install_file "server/tmux.conf" "$VPS_DIR/tmux.conf" fallback_tmux_conf
 # Install session.sh
 fallback_session_sh() {
   # In curl-pipe mode, fetch from GitHub
-  curl -fsSL "https://raw.githubusercontent.com/kapitolph/dev-vps/main/server/session.sh"
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/session.sh"
 }
 install_file "server/session.sh" "$VPS_DIR/session.sh" fallback_session_sh
 

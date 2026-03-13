@@ -6,7 +6,7 @@
 set -euo pipefail
 
 NPDEV_VERSION="0.6.0"
-GITHUB_REPO="kapitolph/dev-vps"
+GITHUB_REPO="kapitolph/npdev"
 NPDEV_DIR="$HOME/.npdev"
 CONFIG_FILE="$NPDEV_DIR/config"
 MACHINES_FILE="$NPDEV_DIR/machines.yaml"

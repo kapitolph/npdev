@@ -7,7 +7,7 @@
 sudo bash server/setup.sh
 
 # Or curl-pipe (standalone):
-curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/server/setup.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/server/setup.sh | sudo bash
 ```
 
 `setup.sh` is idempotent — safe to re-run. It:

@@ -7,7 +7,7 @@ Shared VPS for pair programming via tmux.
 Paste this into your coding agent (Claude Code, Codex, Cursor, etc.):
 
 ```
-Clone https://github.com/kapitolph/dev-vps.git then read
+Clone https://github.com/kapitolph/npdev.git then read
 client/AGENTS.md and walk me through the setup step by step.
 ```
 
@@ -16,7 +16,7 @@ client/AGENTS.md and walk me through the setup step by step.
 
 ```bash
 # Install npdev (no repo clone needed):
-curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/client/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/client/setup.sh | bash
 
 # Then: generate SSH key, configure ~/.ssh/config, commit key to keys/<name>.pub
 # See client/AGENTS.md for the full step-by-step guide.

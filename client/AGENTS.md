@@ -8,7 +8,7 @@ You are setting up SSH access and the `npdev` CLI for a shared development VPS. 
 
 ## Context
 
-- **This repo**: You should already be in the `nextpay-dev-vps` repo checkout. If not, clone it first: `git clone https://github.com/kapitolph/dev-vps.git && cd nextpay-dev-vps`
+- **This repo**: You should already be in the `nextpay-dev-vps` repo checkout. If not, clone it first: `git clone https://github.com/kapitolph/npdev.git && cd npdev`
 - **VPS registry**: `machines.yaml` lists all VPS instances (name, host, user)
 - **Shared user**: All developers SSH as the same user (defined per-machine) for pair programming via shared tmux sessions
 - **Session system**: The VPS runs a tmux session manager. When two people connect to the same named session, they share the exact same terminal — this enables live pair programming.

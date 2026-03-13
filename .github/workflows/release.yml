@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'client/interactive/**'
+      - 'client/interactive/src/**'
       - '.github/workflows/release.yml'
 
 permissions:
@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -24,12 +26,19 @@ jobs:
         working-directory: client/interactive
         run: bun install --frozen-lockfile
 
-      - name: Extract version
-        id: version
+      - name: Auto-increment patch version
         working-directory: client/interactive
         run: |
-          VERSION=$(grep 'NPDEV_VERSION' src/lib/version.ts | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION_FILE="src/lib/version.ts"
+          CURRENT=$(grep 'NPDEV_VERSION' "$VERSION_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          sed -i "s/NPDEV_VERSION = \"${CURRENT}\"/NPDEV_VERSION = \"${NEW_VERSION}\"/" "$VERSION_FILE"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped version: $CURRENT → $NEW_VERSION"
+        id: version
 
       - name: Build binaries
         working-directory: client/interactive
@@ -38,6 +47,15 @@ jobs:
           bun build src/index.ts --compile --target=bun-linux-x64 --outfile dist/npdev-linux-x64
           bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/npdev-darwin-arm64
           bun build src/index.ts --compile --target=bun-darwin-x64 --outfile dist/npdev-darwin-x64
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add client/interactive/src/lib/version.ts
+          git diff --staged --quiet && exit 0
+          git commit -m "chore: bump version to v${{ steps.version.outputs.version }} [skip ci]"
+          git push
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
@@ -56,7 +74,7 @@ jobs:
 
             Or fresh install:
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/kapitolph/dev-vps/main/client/setup.sh | bash
+            curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/client/setup.sh | bash
             ```
 
             ### Binaries
