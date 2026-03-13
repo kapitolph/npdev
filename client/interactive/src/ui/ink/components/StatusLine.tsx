@@ -1,5 +1,5 @@
-import React from "react";
 import { Box, Text } from "ink";
+import type React from "react";
 import { useTheme } from "../context/ThemeContext";
 
 interface Props {
@@ -28,12 +28,14 @@ export function StatusLine({
   if (confirmEndName) {
     content = (
       <Text>
-        <Text color={theme.yellow}>
-          End '{confirmEndName}'?{" "}
+        <Text color={theme.yellow}>End '{confirmEndName}'? </Text>
+        <Text color={theme.accent} bold>
+          [y]
         </Text>
-        <Text color={theme.accent} bold>[y]</Text>
-        <Text color={theme.subtext0}> yes  </Text>
-        <Text color={theme.accent} bold>[n]</Text>
+        <Text color={theme.subtext0}> yes </Text>
+        <Text color={theme.accent} bold>
+          [n]
+        </Text>
         <Text color={theme.subtext0}> no</Text>
       </Text>
     );
@@ -43,24 +45,30 @@ export function StatusLine({
         <Text color={theme.yellow}>
           End {staleCount} stale session{staleCount > 1 ? "s" : ""}?{" "}
         </Text>
-        <Text color={theme.accent} bold>[y]</Text>
-        <Text color={theme.subtext0}> yes  </Text>
-        <Text color={theme.accent} bold>[n]</Text>
+        <Text color={theme.accent} bold>
+          [y]
+        </Text>
+        <Text color={theme.subtext0}> yes </Text>
+        <Text color={theme.accent} bold>
+          [n]
+        </Text>
         <Text color={theme.subtext0}> no</Text>
       </Text>
     );
   } else if (mode === "new-session") {
-    content = (
-      <Text color={theme.overlay1}>Enter to confirm · Esc to cancel</Text>
-    );
+    content = <Text color={theme.overlay1}>Enter to confirm · Esc to cancel</Text>;
   } else if (activePanel === "team") {
     content = (
-      <Text color={theme.overlay1}>Viewing team sessions · <Text color={theme.accent}>t</Text> to switch back</Text>
+      <Text color={theme.overlay1}>
+        Viewing team sessions · <Text color={theme.accent}>t</Text> to switch back
+      </Text>
     );
   } else if (staleCount > 0) {
     content = (
       <Text>
-        <Text color={theme.yellow}>⚠ {staleCount} stale session{staleCount > 1 ? "s" : ""}</Text>
+        <Text color={theme.yellow}>
+          ⚠ {staleCount} stale session{staleCount > 1 ? "s" : ""}
+        </Text>
         <Text color={theme.overlay1}> · </Text>
         <Text color={theme.accent}>c</Text>
         <Text color={theme.overlay1}> to clean</Text>
@@ -69,9 +77,7 @@ export function StatusLine({
   } else {
     content = (
       <Text color={theme.overlay1}>
-        {sessionCount > 0
-          ? `↑↓ navigate · ←→ panels · ↵ select · d end`
-          : `n new session · q quit`}
+        {sessionCount > 0 ? `↑↓ navigate · ←→ panels · ↵ select · d end` : `n new session · q quit`}
       </Text>
     );
   }

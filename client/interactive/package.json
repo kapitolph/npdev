@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bash build.sh"
+    "build": "bash build.sh",
+    "check": "biome check src/",
+    "check:fix": "biome check --write src/",
+    "lint": "oxlint src/",
+    "typecheck": "bun x tsc --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^0.10.0",
@@ -14,7 +18,9 @@
     "react-devtools-core": "^7.0.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
     "@types/bun": "latest",
-    "@types/react": "^19.2.14"
+    "@types/react": "^19.2.14",
+    "oxlint": "^1.55.0"
   }
 }

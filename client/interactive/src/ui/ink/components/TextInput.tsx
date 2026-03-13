@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../context/ThemeContext";
 
@@ -24,12 +23,8 @@ export function TextInput({ label, value, error, hint }: Props) {
         <Text color={theme.text}>{value}</Text>
         <Text color={theme.overlay0}>▌</Text>
       </Box>
-      {error && (
-        <Text color={theme.red}>✗ {error}</Text>
-      )}
-      {!error && hint && (
-        <Text color={theme.overlay1}>{hint}</Text>
-      )}
+      {error && <Text color={theme.red}>✗ {error}</Text>}
+      {!error && hint && <Text color={theme.overlay1}>{hint}</Text>}
     </Box>
   );
 }

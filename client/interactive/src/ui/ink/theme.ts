@@ -102,13 +102,15 @@ export function getTheme(): Theme {
 
 // Unicode Math Sans-Serif Bold converter for button labels
 export function toBold(str: string): string {
-  return [...str].map(c => {
-    const code = c.charCodeAt(0);
-    if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D5D4 + (code - 65));  // A-Z
-    if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D5EE + (code - 97)); // a-z
-    if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7EC + (code - 48));  // 0-9
-    return c;
-  }).join("");
+  return [...str]
+    .map((c) => {
+      const code = c.charCodeAt(0);
+      if (code >= 65 && code <= 90) return String.fromCodePoint(0x1d5d4 + (code - 65)); // A-Z
+      if (code >= 97 && code <= 122) return String.fromCodePoint(0x1d5ee + (code - 97)); // a-z
+      if (code >= 48 && code <= 57) return String.fromCodePoint(0x1d7ec + (code - 48)); // 0-9
+      return c;
+    })
+    .join("");
 }
 
 // Status indicators

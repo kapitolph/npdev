@@ -1,7 +1,6 @@
-import React from "react";
 import { Box, Text } from "ink";
-import { BRAND_BLUE, VPS_GREEN } from "../theme";
 import type { Layout } from "../hooks/useTerminalSize";
+import { BRAND_BLUE, VPS_GREEN } from "../theme";
 
 const LOGO_LINES = [
   "███╗  ██╗███████╗██╗  ██╗████████╗██████╗  █████╗ ██╗   ██╗",
@@ -43,9 +42,7 @@ export function Logo({ layout, isOnVPS }: Props) {
   return (
     <Box gap={2}>
       <Text color={BRAND_BLUE}>{LOGO_LINES.join("\n")}</Text>
-      {isOnVPS && (
-        <Text color={VPS_GREEN}>{VPS_LINES.join("\n")}</Text>
-      )}
+      {isOnVPS && <Text color={VPS_GREEN}>{VPS_LINES.join("\n")}</Text>}
     </Box>
   );
 }

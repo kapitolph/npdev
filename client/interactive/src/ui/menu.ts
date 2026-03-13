@@ -1,14 +1,19 @@
 import * as p from "@clack/prompts";
 import chalk from "chalk";
-import type { Machine, VersionInfo, SessionData } from "../types";
-import { cmdSetup } from "../commands/setup";
-import { cmdUpdate } from "../commands/update";
-import { cmdStart } from "../commands/start";
 import { cmdSessions } from "../commands/sessions";
-import { fetchSessions, relativeTime, activityAge } from "../lib/sessions";
+import { cmdSetup } from "../commands/setup";
+import { cmdStart } from "../commands/start";
+import { cmdUpdate } from "../commands/update";
+import { activityAge, fetchSessions, relativeTime } from "../lib/sessions";
 import { sshExec } from "../lib/ssh";
+import type { Machine, SessionData, VersionInfo } from "../types";
 
-export async function mainMenu(machine: Machine, npdevUser: string, version: VersionInfo, machineOverride?: string): Promise<void> {
+export async function mainMenu(
+  machine: Machine,
+  npdevUser: string,
+  version: VersionInfo,
+  machineOverride?: string,
+): Promise<void> {
   while (true) {
     // Fetch sessions with spinner
     const spin = p.spinner();
@@ -18,15 +23,21 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
 
     const mine = sessions
       .filter((s) => s.owner === npdevUser)
-      .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
+      .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
     const team = sessions
       .filter((s) => s.owner !== npdevUser)
-      .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
+      .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
 
     // Header
-    const updateNotice = version.latest ? chalk.yellow(` · update available: v${version.latest}`) : "";
+    const updateNotice = version.latest
+      ? chalk.yellow(` · update available: v${version.latest}`)
+      : "";
     console.log();
-    console.log(chalk.bold(`  ${machine.name}`) + chalk.dim(` · ${npdevUser} · v${version.current}`) + updateNotice);
+    console.log(
+      chalk.bold(`  ${machine.name}`) +
+        chalk.dim(` · ${npdevUser} · v${version.current}`) +
+        updateNotice,
+    );
 
     // Your sessions
     if (mine.length > 0) {
@@ -38,7 +49,7 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
         const age = activityAge(s.last_activity);
         const timeColor = age > 3 * 86400 ? chalk.yellow : chalk.dim;
         console.log(
-          `    ${chalk.cyan(s.name.padEnd(22))} ${timeColor(relativeTime(s.last_activity).padEnd(12))}${countStr}`
+          `    ${chalk.cyan(s.name.padEnd(22))} ${timeColor(relativeTime(s.last_activity).padEnd(12))}${countStr}`,
         );
       }
     }
@@ -50,7 +61,7 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
       const byOwner = new Map<string, SessionData[]>();
       for (const s of team) {
         if (!byOwner.has(s.owner)) byOwner.set(s.owner, []);
-        byOwner.get(s.owner)!.push(s);
+        byOwner.get(s.owner)?.push(s);
       }
       for (const [owner, ownerSessions] of byOwner) {
         for (let i = 0; i < ownerSessions.length; i++) {
@@ -59,7 +70,7 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
           const countStr = count > 0 ? chalk.green(`  ${count} attached`) : "";
           const ownerLabel = i === 0 ? chalk.dim(owner.padEnd(10)) : " ".repeat(10);
           console.log(
-            `    ${ownerLabel} ${s.name.padEnd(22)} ${chalk.dim(relativeTime(s.last_activity).padEnd(12))}${countStr}`
+            `    ${ownerLabel} ${s.name.padEnd(22)} ${chalk.dim(relativeTime(s.last_activity).padEnd(12))}${countStr}`,
           );
         }
       }
@@ -70,7 +81,7 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
     if (staleSessions.length > 0) {
       console.log();
       p.log.warn(
-        `You have ${staleSessions.length} stale session(s) (inactive 3+ days): ${staleSessions.map((s) => s.name).join(", ")}`
+        `You have ${staleSessions.length} stale session(s) (inactive 3+ days): ${staleSessions.map((s) => s.name).join(", ")}`,
       );
       const cleanUp = await p.confirm({
         message: "End stale sessions?",
@@ -121,7 +132,11 @@ export async function mainMenu(machine: Machine, npdevUser: string, version: Ver
 
     // Manage, setup, update, exit
     if (sessions.length > 0) {
-      options.push({ value: "manage", label: "Manage sessions", hint: "view, filter, end sessions" });
+      options.push({
+        value: "manage",
+        label: "Manage sessions",
+        hint: "view, filter, end sessions",
+      });
     }
     options.push({ value: "setup", label: "Setup", hint: "configure developer identity" });
 

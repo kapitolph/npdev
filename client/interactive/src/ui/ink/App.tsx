@@ -1,20 +1,20 @@
-import React, { useState, useCallback, useEffect } from "react";
 import { Box, useInput } from "ink";
-import type { Machine, VersionInfo } from "../../types";
+import { useCallback, useEffect, useState } from "react";
 import { sshExec } from "../../lib/ssh";
-import { useSessions } from "./hooks/useSessions";
-import { useTerminalSize } from "./hooks/useTerminalSize";
-import { Header } from "./components/Header";
-import { TabBar } from "./components/TabBar";
-import { SessionList } from "./components/SessionList";
-import { TeamSection } from "./components/TeamSection";
-import { ButtonBar } from "./components/ButtonBar";
+import type { Machine, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
-import { StatusLine } from "./components/StatusLine";
-import { Spinner } from "./components/Spinner";
+import { ButtonBar } from "./components/ButtonBar";
 import { EmptyState } from "./components/EmptyState";
+import { Header } from "./components/Header";
+import { SessionList } from "./components/SessionList";
+import { Spinner } from "./components/Spinner";
+import { StatusLine } from "./components/StatusLine";
+import { TabBar } from "./components/TabBar";
+import { TeamSection } from "./components/TeamSection";
 import { TextInput } from "./components/TextInput";
 import { useTheme } from "./context/ThemeContext";
+import { useSessions } from "./hooks/useSessions";
+import { useTerminalSize } from "./hooks/useTerminalSize";
 
 type AppState =
   | { mode: "dashboard" }
@@ -54,8 +54,9 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const currentList = activePanel === "mine" ? mine : team;
   const maxItems = currentList.length;
 
-  // Viewport windowing — header ~9, buttons ~3*numButtons, status 1, section header 3, padding
-  const buttonLines = buttons.length * 3; // each button is 3 lines (border top, content, border bottom)
+  // Button count estimate for viewport calculation (must match actual buttons below)
+  const buttonCount = 3 + (stale.length > 0 ? 1 : 0) + (!isOnVPS ? 2 : 0);
+  const buttonLines = buttonCount * 3;
   const maxVisible = Math.max(3, rows - 12 - buttonLines);
 
   // Move cursor and scroll offset together in one batch
@@ -71,7 +72,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         return next;
       });
     },
-    [maxItems, maxVisible]
+    [maxItems, maxVisible],
   );
 
   // Clamp cursor when list size changes
@@ -104,16 +105,29 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     setScrollOffset(0);
   }, [team.length]);
 
-  const endSession = useCallback(async (name: string) => {
-    await sshExec(machine, `bash ~/.vps/session.sh end '${name}'`);
-    refresh();
-  }, [machine, refresh]);
+  const endSession = useCallback(
+    async (name: string) => {
+      await sshExec(machine, `bash ~/.vps/session.sh end '${name}'`);
+      refresh();
+    },
+    [machine, refresh],
+  );
 
   // Button definitions
   const buttons: ButtonDef[] = [
-    { key: "n", label: "New", action: () => setState({ mode: "new-session", input: "", error: "" }) },
+    {
+      key: "n",
+      label: "New",
+      action: () => setState({ mode: "new-session", input: "", error: "" }),
+    },
     ...(stale.length > 0
-      ? [{ key: "c", label: `Clean ${stale.length}`, action: () => setState({ mode: "confirm-stale" }) }]
+      ? [
+          {
+            key: "c",
+            label: `Clean ${stale.length}`,
+            action: () => setState({ mode: "confirm-stale" }),
+          },
+        ]
       : []),
     { key: "r", label: "Refresh", action: refresh },
     ...(!isOnVPS
@@ -166,7 +180,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     if (state.mode === "confirm-stale") {
       if (input === "y" || input === "Y") {
         setState({ mode: "dashboard" });
-        Promise.all(stale.map(s => endSession(s.name)));
+        Promise.all(stale.map((s) => endSession(s.name))).catch(() => {});
         return;
       }
       if (key.escape || input === "n" || input === "N") {
@@ -270,7 +284,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const isEmpty = mine.length === 0 && team.length === 0;
 
   // Derive activeTab for TabBar
-  const activeTab = activePanel === "mine" ? "sessions" as const : "team" as const;
+  const activeTab = activePanel === "mine" ? ("sessions" as const) : ("team" as const);
 
   // Loading state
   if (loading) {
@@ -334,11 +348,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   ) : (
     // Normal/narrow: tabbed
     <Box flexDirection="column" flexGrow={1}>
-      <TabBar
-        activeTab={activeTab}
-        sessionCount={mine.length}
-        teamCount={team.length}
-      />
+      <TabBar activeTab={activeTab} sessionCount={mine.length} teamCount={team.length} />
       {activePanel === "mine" ? (
         <SessionList
           sessions={mine}

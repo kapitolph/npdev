@@ -1,10 +1,9 @@
-import React from "react";
 import { Box, Text } from "ink";
 import type { SessionData } from "../../../types";
-import type { Layout } from "../hooks/useTerminalSize";
-import { SessionRow } from "./SessionRow";
 import { useTheme } from "../context/ThemeContext";
+import type { Layout } from "../hooks/useTerminalSize";
 import { toBlockText } from "../theme";
+import { SessionRow } from "./SessionRow";
 
 interface Props {
   sessions: SessionData[];
@@ -27,15 +26,14 @@ export function TeamSection({
   maxVisible,
   focused = false,
 }: Props) {
-  if (sessions.length === 0) return null;
-
   const theme = useTheme();
+  if (sessions.length === 0) return null;
 
   // Group by owner
   const byOwner = new Map<string, SessionData[]>();
   for (const s of sessions) {
     if (!byOwner.has(s.owner)) byOwner.set(s.owner, []);
-    byOwner.get(s.owner)!.push(s);
+    byOwner.get(s.owner)?.push(s);
   }
 
   // Build flat list with owner labels
@@ -81,9 +79,7 @@ export function TeamSection({
           Team ({sessions.length})
         </Text>
       )}
-      {aboveCount > 0 && (
-        <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>
-      )}
+      {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}
       {visibleRows.map((row) => (
         <SessionRow
           key={row.session.name}
@@ -95,9 +91,7 @@ export function TeamSection({
           width={width}
         />
       ))}
-      {belowCount > 0 && (
-        <Text color={theme.overlay1}> ↓ {belowCount} more</Text>
-      )}
+      {belowCount > 0 && <Text color={theme.overlay1}> ↓ {belowCount} more</Text>}
     </Box>
   );
 }

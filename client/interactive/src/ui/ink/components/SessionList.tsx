@@ -1,10 +1,9 @@
-import React from "react";
 import { Box, Text } from "ink";
 import type { SessionData } from "../../../types";
-import type { Layout } from "../hooks/useTerminalSize";
-import { SessionRow } from "./SessionRow";
 import { useTheme } from "../context/ThemeContext";
+import type { Layout } from "../hooks/useTerminalSize";
 import { toBlockText } from "../theme";
+import { SessionRow } from "./SessionRow";
 
 interface Props {
   sessions: SessionData[];
@@ -27,9 +26,8 @@ export function SessionList({
   maxVisible,
   focused = false,
 }: Props) {
-  if (sessions.length === 0) return null;
-
   const theme = useTheme();
+  if (sessions.length === 0) return null;
   const visibleSessions = sessions.slice(scrollOffset, scrollOffset + maxVisible);
   const aboveCount = scrollOffset;
   const belowCount = Math.max(0, sessions.length - scrollOffset - maxVisible);
@@ -60,9 +58,7 @@ export function SessionList({
           Your sessions ({sessions.length})
         </Text>
       )}
-      {aboveCount > 0 && (
-        <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>
-      )}
+      {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}
       {visibleSessions.map((s, i) => (
         <SessionRow
           key={s.name}
@@ -72,9 +68,7 @@ export function SessionList({
           width={width}
         />
       ))}
-      {belowCount > 0 && (
-        <Text color={theme.overlay1}> ↓ {belowCount} more</Text>
-      )}
+      {belowCount > 0 && <Text color={theme.overlay1}> ↓ {belowCount} more</Text>}
     </Box>
   );
 }

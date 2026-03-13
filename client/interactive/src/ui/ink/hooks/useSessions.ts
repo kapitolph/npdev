@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { activityAge, fetchSessions } from "../../../lib/sessions";
 import type { Machine, SessionData } from "../../../types";
-import { fetchSessions, activityAge } from "../../../lib/sessions";
 
 interface UseSessionsResult {
   sessions: SessionData[];
@@ -28,11 +28,11 @@ export function useSessions(machine: Machine, npdevUser: string): UseSessionsRes
 
   const mine = sessions
     .filter((s) => s.owner === npdevUser)
-    .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
+    .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
 
   const team = sessions
     .filter((s) => s.owner !== npdevUser)
-    .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
+    .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
 
   const stale = mine.filter((s) => activityAge(s.last_activity) > 3 * 86400);
 

@@ -1,8 +1,7 @@
-import React from "react";
-import { Box, Text, Spacer } from "ink";
+import { Box, Spacer, Text } from "ink";
 import type { VersionInfo } from "../../../types";
-import type { Layout } from "../hooks/useTerminalSize";
 import { useTheme } from "../context/ThemeContext";
+import type { Layout } from "../hooks/useTerminalSize";
 import { Logo } from "./Logo";
 
 interface Props {

@@ -18,15 +18,12 @@ function isNewer(a: string, b: string): boolean {
 
 export async function checkVersion(): Promise<VersionInfo> {
   try {
-    const resp = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-      {
-        signal: AbortSignal.timeout(3000),
-        headers: { Accept: "application/vnd.github+json" },
-      }
-    );
+    const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      signal: AbortSignal.timeout(3000),
+      headers: { Accept: "application/vnd.github+json" },
+    });
     if (!resp.ok) return { current: NPDEV_VERSION, latest: null };
-    const data = await resp.json() as { tag_name?: string };
+    const data = (await resp.json()) as { tag_name?: string };
     const tag = data.tag_name;
     if (!tag) return { current: NPDEV_VERSION, latest: null };
     const latest = tag.replace(/^v/, "");

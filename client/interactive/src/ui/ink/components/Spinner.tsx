@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
 import { Text } from "ink";
+import { useEffect, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { icons } from "../theme";
 

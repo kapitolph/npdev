@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import type { Machine } from "../types";
 import { sshExec } from "../lib/ssh";
+import type { Machine } from "../types";
 
 const GITHUB_REPO = "kapitolph/npdev";
 
@@ -25,7 +25,7 @@ export async function cmdSyncKeys(machine: Machine): Promise<void> {
   for (const file of pubFiles) {
     const name = file.name.replace(/\.pub$/, "");
     const keyResp = await fetch(
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/keys/${file.name}`
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/keys/${file.name}`,
     );
     if (!keyResp.ok) continue;
     const key = (await keyResp.text()).trim();
@@ -33,7 +33,7 @@ export async function cmdSyncKeys(machine: Machine): Promise<void> {
 
     const { stdout } = await sshExec(
       machine,
-      `grep -qF '${key}' ~/.ssh/authorized_keys 2>/dev/null && echo 'exists' || { echo '${key}' >> ~/.ssh/authorized_keys && echo 'added'; }`
+      `grep -qF '${key}' ~/.ssh/authorized_keys 2>/dev/null && echo 'exists' || { echo '${key}' >> ~/.ssh/authorized_keys && echo 'added'; }`,
     );
 
     if (stdout === "added") {

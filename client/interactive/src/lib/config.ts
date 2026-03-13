@@ -1,7 +1,7 @@
-import { homedir } from "os";
-import { join } from "path";
-import { existsSync } from "fs";
-import { readFile } from "fs/promises";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Config, Machine } from "../types";
 
 const NPDEV_DIR = join(homedir(), ".npdev");
@@ -41,13 +41,21 @@ export async function loadMachines(): Promise<Machine[]> {
     if (!current) continue;
 
     const hostMatch = line.match(/^\s+host:\s+(.+)/);
-    if (hostMatch) { current.host = hostMatch[1].trim(); continue; }
+    if (hostMatch) {
+      current.host = hostMatch[1].trim();
+      continue;
+    }
 
     const userMatch = line.match(/^\s+user:\s+(.+)/);
-    if (userMatch) { current.user = userMatch[1].trim(); continue; }
+    if (userMatch) {
+      current.user = userMatch[1].trim();
+      continue;
+    }
 
     const descMatch = line.match(/^\s+description:\s+"?([^"]*)"?/);
-    if (descMatch) { current.description = descMatch[1].trim(); continue; }
+    if (descMatch) {
+      current.description = descMatch[1].trim();
+    }
   }
   if (current?.name) machines.push(current as Machine);
 

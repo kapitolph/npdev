@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../context/ThemeContext";
 import { toBold } from "../theme";
@@ -25,9 +24,7 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
 
         return (
           <Box key={btn.key}>
-            <Text color={isFocused ? theme.accent : theme.surface2}>
-              {isFocused ? "▸" : " "}
-            </Text>
+            <Text color={isFocused ? theme.accent : theme.surface2}>{isFocused ? "▸" : " "}</Text>
             <Text> </Text>
             <Box
               borderStyle="round"
@@ -36,7 +33,8 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone }: Props) {
             >
               <Text color={isFocused ? theme.accent : theme.overlay0}>{btn.key}</Text>
               <Text color={isFocused ? theme.accent : theme.subtext0}>
-                {" "}{toBold(btn.label.toUpperCase())}
+                {" "}
+                {toBold(btn.label.toUpperCase())}
               </Text>
             </Box>
           </Box>

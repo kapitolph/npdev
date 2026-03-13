@@ -8,7 +8,10 @@ function sshTarget(machine: Machine): string {
 }
 
 /** Run a command (locally on VPS, or via SSH) and capture stdout */
-export async function sshExec(machine: Machine, command: string): Promise<{ stdout: string; exitCode: number }> {
+export async function sshExec(
+  machine: Machine,
+  command: string,
+): Promise<{ stdout: string; exitCode: number }> {
   const args = isOnVPS()
     ? ["bash", "-c", command]
     : ["ssh", ...SSH_OPTS, sshTarget(machine), command];

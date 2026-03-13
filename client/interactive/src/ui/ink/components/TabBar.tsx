@@ -1,4 +1,3 @@
-import React from "react";
 import { Box, Text } from "ink";
 import { useTheme } from "../context/ThemeContext";
 
@@ -25,8 +24,7 @@ export function TabBar({ activeTab, sessionCount, teamCount }: Props) {
           bold={activeTab === "team"}
           color={activeTab === "team" ? theme.tabActive : theme.tabInactive}
         >
-          {activeTab === "team" ? "[ " : "  "}Team ({teamCount})
-          {activeTab === "team" ? " ]" : "  "}
+          {activeTab === "team" ? "[ " : "  "}Team ({teamCount}){activeTab === "team" ? " ]" : "  "}
         </Text>
       )}
     </Box>

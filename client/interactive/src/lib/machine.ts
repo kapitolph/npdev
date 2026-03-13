@@ -36,5 +36,7 @@ export async function selectMachine(machineOverride?: string): Promise<Machine> 
     process.exit(0);
   }
 
-  return machines.find((m) => m.name === choice)!;
+  const found = machines.find((m) => m.name === choice);
+  if (!found) throw new Error(`Machine '${choice}' not found`);
+  return found;
 }

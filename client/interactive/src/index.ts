@@ -1,18 +1,18 @@
+import { hostname } from "node:os";
 import * as p from "@clack/prompts";
-import { hostname } from "os";
-import { NPDEV_VERSION, checkVersion } from "./lib/version";
-import { loadConfig, loadMachines, isOnVPS } from "./lib/config";
-import { selectMachine } from "./lib/machine";
-import { mainMenu } from "./ui/menu";
-import { cmdStart } from "./commands/start";
 import { cmdEnd } from "./commands/end";
-import { cmdShell } from "./commands/shell";
 import { cmdSessions } from "./commands/sessions";
 import { cmdSetup } from "./commands/setup";
-import { cmdUpdate } from "./commands/update";
+import { cmdShell } from "./commands/shell";
+import { cmdStart } from "./commands/start";
 import { cmdSyncKeys } from "./commands/sync-keys";
+import { cmdUpdate } from "./commands/update";
+import { isOnVPS, loadConfig, loadMachines } from "./lib/config";
+import { selectMachine } from "./lib/machine";
 import { fetchSessions } from "./lib/sessions";
+import { checkVersion, NPDEV_VERSION } from "./lib/version";
 import type { Machine } from "./types";
+import { mainMenu } from "./ui/menu";
 
 const USAGE = `npdev — NextPay Dev VPS CLI
 
@@ -51,11 +51,17 @@ async function main(): Promise<void> {
     switch (args[i]) {
       case "--machine":
         machineOverride = args[++i];
-        if (!machineOverride) { console.error("--machine requires a name"); process.exit(1); }
+        if (!machineOverride) {
+          console.error("--machine requires a name");
+          process.exit(1);
+        }
         break;
       case "--user":
         userOverride = args[++i];
-        if (!userOverride) { console.error("--user requires a name"); process.exit(1); }
+        if (!userOverride) {
+          console.error("--user requires a name");
+          process.exit(1);
+        }
         break;
       case "--old":
         useOldMenu = true;
@@ -64,10 +70,12 @@ async function main(): Promise<void> {
       case "-v":
         console.log(`npdev ${NPDEV_VERSION}`);
         process.exit(0);
+        break;
       case "--help":
       case "-h":
         console.log(USAGE);
         process.exit(0);
+        break;
       default:
         remaining.push(args[i]);
     }
@@ -88,7 +96,8 @@ async function main(): Promise<void> {
 
   // Load config
   const config = await loadConfig();
-  let npdevUser = userOverride || config.npdevUser || (isOnVPS() ? process.env.GIT_AUTHOR_NAME : undefined) || "";
+  let npdevUser =
+    userOverride || config.npdevUser || (isOnVPS() ? process.env.GIT_AUTHOR_NAME : undefined) || "";
 
   // Check machines exist
   const machines = await loadMachines();
@@ -117,7 +126,10 @@ async function main(): Promise<void> {
         p.log.warn("Developer identity not set. Let's fix that.");
         await cmdSetup(machineOverride);
         const reloaded = await loadConfig();
-        if (!reloaded.npdevUser) { console.error("Setup incomplete."); process.exit(1); }
+        if (!reloaded.npdevUser) {
+          console.error("Setup incomplete.");
+          process.exit(1);
+        }
         npdevUser = reloaded.npdevUser;
       }
 
@@ -131,7 +143,10 @@ async function main(): Promise<void> {
       }
     } else {
       // Non-TTY: quick shell (preserves bash behavior)
-      if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+      if (!npdevUser) {
+        console.error("Developer identity not set. Run: npdev setup");
+        process.exit(1);
+      }
       const machine = await getMachine();
       await cmdShell(machine, npdevUser);
     }
@@ -140,21 +155,33 @@ async function main(): Promise<void> {
 
   // npdev - : resume most recent session
   if (command === "-") {
-    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    if (!npdevUser) {
+      console.error("Developer identity not set. Run: npdev setup");
+      process.exit(1);
+    }
     const machine = await getMachine();
     const sessions = await fetchSessions(machine);
     const mine = sessions
       .filter((s) => s.owner === npdevUser)
-      .sort((a, b) => parseInt(b.last_activity) - parseInt(a.last_activity));
-    if (mine.length === 0) { console.error("No active sessions."); process.exit(1); }
+      .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
+    if (mine.length === 0) {
+      console.error("No active sessions.");
+      process.exit(1);
+    }
     await cmdStart(machine, mine[0].name, npdevUser);
     process.exit(0);
   }
 
   // npdev . : session from current git branch
   if (command === ".") {
-    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
-    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+    if (!npdevUser) {
+      console.error("Developer identity not set. Run: npdev setup");
+      process.exit(1);
+    }
+    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const branch = (await new Response(proc.stdout).text()).trim();
     const exitCode = await proc.exited;
     if (exitCode !== 0 || !branch || branch === "HEAD") {
@@ -189,14 +216,20 @@ async function main(): Promise<void> {
 
   if (command === "end") {
     const sessionName = remaining[1];
-    if (!sessionName) { console.error("Usage: npdev end <session-name>"); process.exit(1); }
+    if (!sessionName) {
+      console.error("Usage: npdev end <session-name>");
+      process.exit(1);
+    }
     const machine = await getMachine();
     await cmdEnd(machine, sessionName);
     return;
   }
 
   // Default: treat as session name (npdev my-feature [description...])
-  if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+  if (!npdevUser) {
+    console.error("Developer identity not set. Run: npdev setup");
+    process.exit(1);
+  }
   const machine = await getMachine();
   const sessionName = command;
   const description = remaining.slice(1).join(" ") || undefined;

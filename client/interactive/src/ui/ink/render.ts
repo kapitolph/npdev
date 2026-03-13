@@ -1,20 +1,20 @@
-import React from "react";
 import { render } from "ink";
+import React from "react";
+import { cmdSetup } from "../../commands/setup";
+import { cmdStart } from "../../commands/start";
+import { cmdUpdate } from "../../commands/update";
+import { isOnVPS } from "../../lib/config";
 import type { Machine, VersionInfo } from "../../types";
-import { App } from "./App";
 import type { AppAction } from "./App";
+import { App } from "./App";
 import { ThemeProvider } from "./context/ThemeContext";
 import { getTheme } from "./theme";
-import { isOnVPS } from "../../lib/config";
-import { cmdStart } from "../../commands/start";
-import { cmdSetup } from "../../commands/setup";
-import { cmdUpdate } from "../../commands/update";
 
 export async function renderInkDashboard(
   machine: Machine,
   npdevUser: string,
   version: VersionInfo,
-  machineOverride?: string
+  machineOverride?: string,
 ): Promise<void> {
   // Bun workaround: stdin must be resumed for Ink to read input
   process.stdin.resume();
@@ -55,6 +55,7 @@ export async function renderInkDashboard(
             });
             const code = await child.exited;
             process.exit(code);
+            break;
           }
           case "exit":
             // Clear Ink output so terminal returns to previous state
@@ -76,8 +77,8 @@ export async function renderInkDashboard(
           version,
           isOnVPS: onVPS,
           onAction: handleAction,
-        })
-      )
+        }),
+      ),
     );
 
     instance.waitUntilExit().then(resolve);

@@ -1,9 +1,8 @@
-import React from "react";
-import { Box, Text, Spacer } from "ink";
+import { Box, Spacer, Text } from "ink";
+import { activityAge, relativeTime } from "../../../lib/sessions";
 import type { SessionData } from "../../../types";
-import { relativeTime, activityAge } from "../../../lib/sessions";
-import type { Layout } from "../hooks/useTerminalSize";
 import { useTheme } from "../context/ThemeContext";
+import type { Layout } from "../hooks/useTerminalSize";
 import { icons } from "../theme";
 
 interface Props {
@@ -30,9 +29,7 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout,
 
   const statusIcon = isActive ? icons.active : isStale ? icons.stale : icons.idle;
 
-  const displayName = layout === "narrow"
-    ? session.name.slice(0, 16)
-    : session.name;
+  const displayName = layout === "narrow" ? session.name.slice(0, 16) : session.name;
 
   const hasDescription =
     session.description &&
@@ -48,26 +45,22 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout,
     >
       {/* Line 1 */}
       <Box>
-        <Text color={isSelected ? theme.cursor : undefined}>
-          {isSelected ? icons.cursor : " "}
-        </Text>
+        <Text color={isSelected ? theme.cursor : undefined}>{isSelected ? icons.cursor : " "}</Text>
         <Text> </Text>
         <Text color={statusColor}>{statusIcon}</Text>
         <Text> </Text>
         <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
           {displayName}
         </Text>
-        {showOwner && ownerLabel !== undefined && (
-          <Text color={theme.overlay1}> {ownerLabel}</Text>
-        )}
+        {showOwner && ownerLabel !== undefined && <Text color={theme.overlay1}> {ownerLabel}</Text>}
         <Spacer />
         <Text color={isStale ? theme.yellow : theme.overlay1}>
           {relativeTime(session.last_activity)}
         </Text>
         {isActive && (
           <Text color={theme.green}>
-            {" "}{icons.attached}{" "}
-            {session.attached_users || String(count)}
+            {" "}
+            {icons.attached} {session.attached_users || String(count)}
           </Text>
         )}
       </Box>

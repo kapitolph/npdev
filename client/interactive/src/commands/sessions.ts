@@ -1,9 +1,8 @@
 import * as p from "@clack/prompts";
 import chalk from "chalk";
+import { activityAge, fetchSessions, relativeTime } from "../lib/sessions";
+import { sshExec, sshInteractive } from "../lib/ssh";
 import type { Machine, SessionData } from "../types";
-import { sshExec } from "../lib/ssh";
-import { sshInteractive } from "../lib/ssh";
-import { fetchSessions, relativeTime, activityAge } from "../lib/sessions";
 
 export { fetchSessions };
 
@@ -14,7 +13,7 @@ function printTable(sessions: SessionData[]): void {
   }
 
   const sorted = [...sessions].sort(
-    (a, b) => (parseInt(b.last_activity, 10) || 0) - (parseInt(a.last_activity, 10) || 0)
+    (a, b) => (parseInt(b.last_activity, 10) || 0) - (parseInt(a.last_activity, 10) || 0),
   );
 
   // Group into active, idle, stale
@@ -38,15 +37,13 @@ function printTable(sessions: SessionData[]): void {
     if (items.length === 0) return;
     console.log();
     console.log(`  ${color(label)}`);
-    console.log(chalk.dim("  " + "─".repeat(76)));
+    console.log(chalk.dim(`  ${"─".repeat(76)}`));
     for (const s of items) {
       const count = parseInt(s.client_count || "0", 10);
       const nameStr = color(s.name.padEnd(20));
       const activeStr = color(relativeTime(s.last_activity).padEnd(14));
       const countStr = count > 0 ? chalk.green(` ${count} attached`) : "";
-      console.log(
-        `  ${nameStr} ${s.owner.padEnd(12)} ${s.type.padEnd(8)} ${activeStr}${countStr}`
-      );
+      console.log(`  ${nameStr} ${s.owner.padEnd(12)} ${s.type.padEnd(8)} ${activeStr}${countStr}`);
     }
   };
 
@@ -113,7 +110,11 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
         filterOptions.push({ value: "mine", label: "My sessions", hint: `${mine.length}` });
       }
       if (staleSessions.length > 0) {
-        filterOptions.push({ value: "stale", label: "Inactive 3+ days", hint: `${staleSessions.length}` });
+        filterOptions.push({
+          value: "stale",
+          label: "Inactive 3+ days",
+          hint: `${staleSessions.length}`,
+        });
       }
       if (owners.length > 1) {
         filterOptions.push({ value: "by-owner", label: "By owner..." });
@@ -150,7 +151,7 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
 
       // Sort oldest activity first
       const sorted = [...filtered].sort(
-        (a, b) => (parseInt(a.last_activity, 10) || 0) - (parseInt(b.last_activity, 10) || 0)
+        (a, b) => (parseInt(a.last_activity, 10) || 0) - (parseInt(b.last_activity, 10) || 0),
       );
 
       const selected = await p.multiselect({
