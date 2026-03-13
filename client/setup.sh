@@ -70,6 +70,11 @@ else
 fi
 chmod +x "$INSTALL_DIR/npdev"
 
+# Ad-hoc sign on macOS — Apple Silicon kills unsigned Mach-O binaries
+if [[ "$(uname -s)" == "Darwin" ]] && command -v codesign &>/dev/null; then
+  codesign -s - "$INSTALL_DIR/npdev" 2>/dev/null && ok "Ad-hoc signed binary for macOS" || true
+fi
+
 # ─── Step 2: Install machines.yaml ───────────────────────────────────────
 info "Configuring machines..."
 

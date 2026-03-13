@@ -61,16 +61,18 @@ export async function cmdUpdate(): Promise<void> {
     await chmod(tmpPath, 0o755);
     try { await unlink(execPath); } catch {}
     await rename(tmpPath, execPath);
+    // Ad-hoc sign on macOS — Apple Silicon kills unsigned Mach-O binaries
+    if (process.platform === "darwin") {
+      const { execSync } = await import("child_process");
+      try { execSync(`codesign -s - "${execPath}"`, { stdio: "ignore" }); } catch {}
+    }
     s.stop("npdev binary updated");
   } catch {
     s.stop("Failed to fetch binary (may not be released yet — using current version)");
   }
 
   // Clear version cache so next run picks up fresh state
-  try {
-    const { unlink } = await import("fs/promises");
-    await unlink(join(npdevDir(), ".version-check"));
-  } catch {}
+  try { await unlink(join(npdevDir(), ".version-check")); } catch {}
 
   p.outro(`npdev is now at v${newVersion}`);
 }
