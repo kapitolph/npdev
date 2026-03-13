@@ -41,7 +41,7 @@ export function SessionRow({ session, isSelected, showOwner, ownerLabel, layout,
     <Box
       flexDirection="column"
       width={width}
-      backgroundColor={isSelected ? theme.surface0 : undefined}
+      backgroundColor={isSelected ? theme.highlight : undefined}
     >
       {/* Line 1 */}
       <Box>

@@ -60,17 +60,20 @@ export interface Theme {
   borderFocused: string;
   dimmed: string;
   // New semantic tokens
-  highlight: string;
+  highlight: string | undefined;
   buttonBg: string;
   buttonFocusBg: string;
   tabActive: string;
   tabInactive: string;
   // Panel tokens
-  screenBg: string;
-  panelBg: string;
+  screenBg: string | undefined;
+  panelBg: string | undefined;
   panelBorder: string;
   panelBorderFocused: string;
 }
+
+// Truecolor supported when COLORTERM is set (e.g. "truecolor" or "24bit")
+const hasTruecolor = !!process.env.COLORTERM;
 
 export function getTheme(): Theme {
   const accent = palette.mauve;
@@ -87,14 +90,15 @@ export function getTheme(): Theme {
     borderFocused: accent,
     dimmed: palette.overlay0,
     // New semantic tokens
-    highlight: palette.surface0,
+    highlight: hasTruecolor ? palette.surface0 : undefined,
     buttonBg: palette.surface1,
     buttonFocusBg: accent,
     tabActive: accent,
     tabInactive: palette.overlay1,
-    // Panel tokens
-    screenBg: palette.crust,
-    panelBg: palette.base,
+    // Panel tokens — skip backgrounds when truecolor is unavailable
+    // to avoid ugly 256-color approximations
+    screenBg: hasTruecolor ? palette.crust : undefined,
+    panelBg: hasTruecolor ? palette.base : undefined,
     panelBorder: palette.surface2,
     panelBorderFocused: accent,
   };

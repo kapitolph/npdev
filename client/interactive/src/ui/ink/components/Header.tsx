@@ -18,7 +18,7 @@ export function Header({ machineName, npdevUser, version, cols, layout, isOnVPS 
 
   if (layout === "narrow") {
     return (
-      <Box width={cols} backgroundColor={theme.surface0} paddingX={1}>
+      <Box width={cols} backgroundColor={theme.highlight} paddingX={1}>
         <Logo layout={layout} isOnVPS={isOnVPS} />
         <Spacer />
         <Box gap={1}>
