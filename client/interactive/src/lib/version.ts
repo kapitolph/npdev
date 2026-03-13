@@ -6,6 +6,18 @@ import type { VersionInfo } from "../types";
 export const NPDEV_VERSION = "1.0.0";
 const GITHUB_REPO = "kapitolph/dev-vps";
 
+function isNewer(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] || 0;
+    const vb = pb[i] || 0;
+    if (va > vb) return true;
+    if (va < vb) return false;
+  }
+  return false;
+}
+
 export async function checkVersion(): Promise<VersionInfo> {
   const cacheFile = join(npdevDir(), ".version-check");
   const now = Math.floor(Date.now() / 1000);
@@ -18,7 +30,9 @@ export async function checkVersion(): Promise<VersionInfo> {
     const cachedVersion = lines[1] || null;
 
     if (now - lastCheck < 3600) {
-      return { current: NPDEV_VERSION, latest: cachedVersion };
+      // Only report as "latest" if it's actually newer than current
+      const effective = cachedVersion && isNewer(cachedVersion, NPDEV_VERSION) ? cachedVersion : null;
+      return { current: NPDEV_VERSION, latest: effective };
     }
   } catch {
     // No cache
