@@ -29,13 +29,14 @@ tmux_running() {
 }
 
 registry_add() {
-  local name="$1" type="$2" desc="$3" ts
+  local name="$1" type="$2" desc="$3" owner="${4:-unknown}" ts
   ts="$(timestamp)"
   sed -i 's/^sessions: \[\]$/sessions:/' "$REGISTRY"
   cat >> "$REGISTRY" <<EOF
   - name: $name
     type: $type
     description: "$desc"
+    owner: $owner
     status: active
     created_at: "$ts"
     ended_at: null
@@ -110,7 +111,7 @@ cmd_start() {
   cmd_reconcile quiet
 
   # Add registry entry
-  registry_add "$name" "$type" "$desc"
+  registry_add "$name" "$type" "$desc" "$dev_user"
 
   # Use REPO_DIR if it exists, otherwise home
   local work_dir="$HOME"
@@ -223,6 +224,60 @@ cmd_describe() {
   fi
 }
 
+cmd_session_data() {
+  # Output JSON combining registry data + tmux session_activity timestamps
+  # Only returns active sessions
+  local active_names
+  active_names=$(awk '
+    /^  - name:/ { name = $3 }
+    /status: active/ { print name }
+  ' "$REGISTRY" | sort -u)
+
+  local first=1
+  printf '['
+  for sname in $active_names; do
+    # Skip sessions that no longer have a tmux process
+    tmux_running "$sname" || continue
+
+    local type desc owner created_at last_activity
+    type=$(awk -v name="$sname" '
+      /^  - name:/ { current = $3; active = 0 }
+      current == name && /status: active/ { active = 1 }
+      current == name && active && /type:/ { print $2; exit }
+    ' "$REGISTRY")
+    desc=$(awk -v name="$sname" '
+      /^  - name:/ { current = $3; active = 0 }
+      current == name && /status: active/ { active = 1 }
+      current == name && active && /description:/ {
+        sub(/^[[:space:]]*description:[[:space:]]*"?/, ""); sub(/"$/, "")
+        print; exit
+      }
+    ' "$REGISTRY")
+    owner=$(awk -v name="$sname" '
+      /^  - name:/ { current = $3; active = 0 }
+      current == name && /status: active/ { active = 1 }
+      current == name && active && /owner:/ { print $2; exit }
+    ' "$REGISTRY")
+    [[ -z "$owner" ]] && owner="unknown"
+    created_at=$(awk -v name="$sname" '
+      /^  - name:/ { current = $3; active = 0 }
+      current == name && /status: active/ { active = 1 }
+      current == name && active && /created_at:/ {
+        sub(/^[[:space:]]*created_at:[[:space:]]*"?/, ""); sub(/"$/, "")
+        print; exit
+      }
+    ' "$REGISTRY")
+    # Get tmux session activity timestamp (epoch)
+    last_activity=$(tmux -f "$TMUX_CONF" display-message -p -t "$sname" '#{session_activity}' 2>/dev/null || echo "")
+
+    [[ $first -eq 0 ]] && printf ','
+    first=0
+    printf '{"name":"%s","type":"%s","description":"%s","owner":"%s","created_at":"%s","last_activity":"%s"}' \
+      "$sname" "$type" "$desc" "$owner" "$created_at" "$last_activity"
+  done
+  printf ']\n'
+}
+
 cmd_registry() {
   cat "$REGISTRY"
 }
@@ -234,6 +289,7 @@ case "${1:-}" in
   list)     cmd_list ;;
   describe) shift; [[ $# -lt 2 ]] && { echo "Usage: session.sh describe <name> <desc>" >&2; exit 1; }; cmd_describe "$1" "$2" ;;
   reconcile) cmd_reconcile ;;
+  session-data) cmd_session_data ;;
   registry) cmd_registry ;;
-  *)        echo "Usage: session.sh {start|end|list|describe|reconcile|registry} [args...]" >&2; exit 1 ;;
+  *)        echo "Usage: session.sh {start|end|list|describe|reconcile|session-data|registry} [args...]" >&2; exit 1 ;;
 esac

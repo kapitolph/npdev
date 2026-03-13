@@ -7,7 +7,7 @@ Shared VPS pair programming system. All developers SSH as a single shared user (
 ```
 Client (engineer's machine)          VPS (shared dev server)
 ─────────────────────────────        ─────────────────────────────
-~/.local/bin/npdev                   ~/.vps/session.sh
+~/.local/bin/npdev (compiled bin)    ~/.vps/session.sh
 ~/.npdev/config (NPDEV_USER)         ~/.vps/tmux.conf
 ~/.npdev/machines.yaml               ~/.vps/sessions.yaml (registry)
 ~/.ssh/vps/id_<name>_ed25519         ~/.vps/developers/<name>.env
@@ -18,8 +18,14 @@ Client (engineer's machine)          VPS (shared dev server)
 
 | File | Purpose |
 |------|---------|
-| `client/npdev` | Self-contained CLI. Installed to `~/.local/bin/npdev`. Self-updates via `npdev update` (fetches from GitHub raw). |
-| `client/setup.sh` | Idempotent installer. Copies `npdev` + `machines.yaml` to `~/.npdev/`. Works via curl-pipe or repo checkout. |
+| `client/npdev` | Legacy bash CLI (kept for fallback). |
+| `client/interactive/` | New Bun/TypeScript interactive CLI. Compiled to standalone binary via `bun build --compile`. |
+| `client/interactive/src/index.ts` | Entry point: arg parsing → interactive menu or subcommand dispatch. |
+| `client/interactive/src/commands/` | One file per command: start, end, list, shell, setup, update, sync-keys, cleanup. |
+| `client/interactive/src/lib/` | Shared modules: ssh, config, machine selection, version check. |
+| `client/interactive/src/ui/` | Welcome banner and interactive menu loop (uses @clack/prompts). |
+| `client/interactive/build.sh` | Cross-platform `bun build --compile` (linux-x64, darwin-arm64, darwin-x64). |
+| `client/setup.sh` | Idempotent installer. Downloads compiled binary from GitHub releases (falls back to bash script). |
 | `client/AGENTS.md` | Agent-readable onboarding walkthrough for new developers. |
 
 ### Server (`server/`)
@@ -27,7 +33,7 @@ Client (engineer's machine)          VPS (shared dev server)
 | File | Purpose |
 |------|---------|
 | `server/setup.sh` | Idempotent VPS provisioner. Requires `sudo`. Installs bun, volta, node, claude code, codex, gh, tmux + TPM. |
-| `server/session.sh` | Tmux session manager. Handles start/end/list/reconcile. Sources per-developer env on session start. |
+| `server/session.sh` | Tmux session manager. Handles start/end/list/describe/reconcile/session-data. Sources per-developer env on session start. `session-data` returns JSON with name/type/description/owner/created_at/last_activity for active sessions. |
 | `server/tmux.conf` | Tmux config with vim nav, mouse, 50K scrollback, resurrect + continuum persistence. |
 | `server/README.md` | Admin docs for provisioning and server-side operations. |
 
@@ -43,8 +49,9 @@ Client (engineer's machine)          VPS (shared dev server)
 - **Single shared user (`dev`)**: Enables tmux session sharing. Two devs running `npdev feature-x` attach to the same terminal.
 - **Per-developer identity**: `~/.vps/developers/<name>.env` sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `GH_TOKEN`. Sourced by `session.sh` at session start.
 - **Git credential helper**: `~/.vps/git-credential-token` reads `GH_TOKEN` from the session environment and passes it to git for HTTPS auth. Configured via `git config --global credential.helper`.
-- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` fetches everything from GitHub raw.
+- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` is a compiled Bun binary with interactive menu (via @clack/prompts).
 - **Version check**: On every run (cached 1hr), `npdev` checks GitHub for a newer version and warns the user.
+- **Interactive mode**: Running `npdev` with no args on a TTY opens an interactive menu. Non-TTY falls back to quick shell.
 - **`setup.sh` dual mode**: Detects repo checkout vs curl-pipe via `SCRIPT_DIR`. Falls back to inline heredocs or GitHub raw fetch when no repo is available.
 
 ## VPS Toolchain
@@ -63,7 +70,7 @@ Installed by `server/setup.sh` on the shared `dev` user:
 
 ## Session Types
 
-`session.sh start <name> <type> [desc] [dev_user]`
+`session.sh start <name> <type> [desc] [dev_user]` — `dev_user` is stored as `owner` in the registry.
 
 | Type | Command run in tmux |
 |------|---------------------|
@@ -103,6 +110,8 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 ### Testing
 
 - **Syntax check**: `bash -n server/setup.sh && bash -n server/session.sh && bash -n client/npdev && bash -n client/setup.sh`
+- **TypeScript check**: `cd client/interactive && bun build src/index.ts --target=bun --outfile /dev/null`
+- **Compile binary**: `cd client/interactive && bash build.sh`
 - **Session test** (needs terminal): `ssh -t dev@<host> "bash ~/.vps/session.sh start test-session shell 'test' don"` then `Ctrl+B, D` to detach, `bash ~/.vps/session.sh end test-session` to clean up.
 - **Non-interactive test**: `ssh dev@<host> 'source ~/.vps/developers/don.env && echo "$GIT_AUTHOR_NAME" && git clone https://github.com/kapitolph/nextpay-v3.git /tmp/test && rm -rf /tmp/test'`
 - **Version check test**: Temporarily set `NPDEV_VERSION="0.0.1"` locally, run any `npdev` command, and verify the warning appears.
@@ -122,7 +131,7 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 ### Self-Update Checklist
 
 After any change, verify:
-- [ ] `NPDEV_VERSION` bumped (if client changed)
+- [ ] `NPDEV_VERSION` bumped in `client/interactive/src/lib/version.ts` (if client changed)
 - [ ] `server/setup.sh` reflects any new server-side state
 - [ ] `AGENTS.md` updated with new context
 - [ ] `client/AGENTS.md` updated if onboarding flow changed
