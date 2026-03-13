@@ -70,7 +70,7 @@ async function fetchWithSpinner(machine: Machine): Promise<SessionData[]> {
 }
 
 export async function cmdSessions(machine: Machine, npdevUser: string): Promise<void> {
-  const sessions = await fetchWithSpinner(machine);
+  let sessions = await fetchWithSpinner(machine);
   printTable(sessions);
 
   if (sessions.length === 0) return;
@@ -201,9 +201,9 @@ export async function cmdSessions(machine: Machine, npdevUser: string): Promise<
       }
 
       // Refresh and re-display
-      const refreshed = await fetchWithSpinner(machine);
-      printTable(refreshed);
-      if (refreshed.length === 0) return;
+      sessions = await fetchWithSpinner(machine);
+      printTable(sessions);
+      if (sessions.length === 0) return;
     }
   }
 }
