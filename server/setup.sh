@@ -285,7 +285,27 @@ fi
 run_as_dev '~/.tmux/plugins/tpm/bin/install_plugins' || warn "TPM plugin install had issues (may need tmux running)"
 ok "Tmux plugins installed"
 
-# ─── Step 12: Configure dev user's shell PATH ────────────────────────────────
+# ─── Step 12: Install Claude Code hooks ──────────────────────────────────────
+info "Setting up Claude Code hooks..."
+
+CLAUDE_HOOK_INSTALLER=""
+if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/server/claude/install-hooks.sh" ]]; then
+  CLAUDE_HOOK_INSTALLER="$REPO_ROOT/server/claude/install-hooks.sh"
+else
+  # Curl-pipe mode: fetch installer and hook from GitHub
+  CLAUDE_HOOK_INSTALLER="/tmp/npdev-install-hooks.sh"
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude/install-hooks.sh" -o "$CLAUDE_HOOK_INSTALLER"
+  mkdir -p "/tmp/npdev-claude-hooks"
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude/hooks/identify-developer.sh" -o "/tmp/npdev-claude-hooks/identify-developer.sh"
+  # Patch script to use temp directory
+  sed -i "s|SCRIPT_DIR=.*|SCRIPT_DIR=\"/tmp/npdev-claude\"|" "$CLAUDE_HOOK_INSTALLER"
+  chmod +x "$CLAUDE_HOOK_INSTALLER"
+fi
+
+run_as_dev "bash $CLAUDE_HOOK_INSTALLER"
+ok "Claude Code hooks installed"
+
+# ─── Step 13: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
 
 BASHRC="/home/$SHARED_USER/.bashrc"
