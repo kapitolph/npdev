@@ -1,7 +1,8 @@
 import { render } from "ink";
 import React from "react";
 import { cmdStart } from "../../commands/start";
-import { isOnVPS } from "../../lib/config";
+import { isOnVPS, loadConfig } from "../../lib/config";
+import { isMoshInstalled } from "../../lib/mosh";
 import { sshInteractive } from "../../lib/ssh";
 import type { Machine, VersionInfo } from "../../types";
 import type { AppAction } from "./App";
@@ -13,6 +14,7 @@ export async function renderInkDashboard(
   machine: Machine,
   npdevUser: string,
   version: VersionInfo,
+  initialMoshEnabled = false,
 ): Promise<void> {
   // Bun workaround: stdin must be resumed for Ink to read input
   process.stdin.resume();
@@ -31,20 +33,28 @@ export async function renderInkDashboard(
         process.stdin.pause();
         process.stdin.removeAllListeners();
 
+        // Re-read config to get current mosh toggle state
+        const config = await loadConfig();
+        const useMosh = !onVPS && config.moshEnabled && isMoshInstalled();
+        if (!onVPS && config.moshEnabled && !isMoshInstalled()) {
+          console.warn("Warning: mosh enabled but not installed — falling back to SSH");
+        }
+        const moshOpts = useMosh ? { mosh: true } : undefined;
+
         switch (action.type) {
           case "resume":
           case "new-session":
           case "join-team":
-            await cmdStart(machine, action.sessionName, npdevUser);
+            await cmdStart(machine, action.sessionName, npdevUser, undefined, undefined, moshOpts);
             resolve();
             break;
           case "new-session-in-repo":
-            await cmdStart(machine, action.sessionName, npdevUser, undefined, action.repoPath);
+            await cmdStart(machine, action.sessionName, npdevUser, undefined, action.repoPath, moshOpts);
             resolve();
             break;
           case "cd-to-repo": {
             const envCmd = `source ~/.vps/developers/${npdevUser}.env 2>/dev/null; `;
-            await sshInteractive(machine, `${envCmd}cd '${action.repoPath}' && exec $SHELL -l`);
+            await sshInteractive(machine, `${envCmd}cd '${action.repoPath}' && exec $SHELL -l`, moshOpts);
             resolve();
             break;
           }
@@ -72,6 +82,7 @@ export async function renderInkDashboard(
           npdevUser,
           version,
           isOnVPS: onVPS,
+          initialMoshEnabled: !onVPS && initialMoshEnabled,
           onAction: handleAction,
         }),
       ),

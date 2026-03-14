@@ -7,6 +7,7 @@ export interface Machine {
 
 export interface Config {
   npdevUser: string;
+  moshEnabled: boolean;
 }
 
 export interface SessionData {

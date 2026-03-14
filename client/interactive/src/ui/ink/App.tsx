@@ -1,5 +1,7 @@
 import { Box, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
+import { saveConfigField } from "../../lib/config";
+import { isMoshInstalled } from "../../lib/mosh";
 import { deriveRepoName } from "../../lib/sessions";
 import { sshExec } from "../../lib/ssh";
 import type { Machine, RepoData, VersionInfo } from "../../types";
@@ -7,6 +9,7 @@ import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
+import { MoshInstallPage } from "./components/MoshInstallPage";
 import { NewSessionPage } from "./components/NewSessionPage";
 import { RepoDetailPage } from "./components/RepoDetailPage";
 import { RepoList } from "./components/RepoList";
@@ -29,7 +32,8 @@ type Route =
   | { page: "new-session-in-repo"; repoPath: string; repoName: string }
   | { page: "repo-detail"; repoPath: string; repoName: string }
   | { page: "update" }
-  | { page: "setup" };
+  | { page: "setup" }
+  | { page: "mosh-install" };
 
 type DashboardMode =
   | { mode: "normal" }
@@ -52,10 +56,11 @@ interface Props {
   npdevUser: string;
   version: VersionInfo;
   isOnVPS: boolean;
+  initialMoshEnabled: boolean;
   onAction: (action: AppAction) => void;
 }
 
-export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
+export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, onAction }: Props) {
   const { sessions, mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
   const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos(machine);
   const { cols, rows, layout } = useTerminalSize();
@@ -75,6 +80,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
   const [lastLeftColumn, setLastLeftColumn] = useState<"sessions" | "team">("sessions");
+  const [moshEnabled, setMoshEnabled] = useState(initialMoshEnabled);
 
   // For narrow layout, focusColumn doubles as the active tab
   const narrowTab = focusColumn;
@@ -188,6 +194,22 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
     ...(!isOnVPS
       ? [
           { key: "s", label: "Setup", action: () => setRoute({ page: "setup" }) },
+          {
+            key: "m",
+            label: moshEnabled ? "Mosh ON" : "Mosh",
+            action: () => {
+              if (moshEnabled) {
+                setMoshEnabled(false);
+                saveConfigField("NPDEV_MOSH", "off");
+              } else if (isMoshInstalled()) {
+                setMoshEnabled(true);
+                saveConfigField("NPDEV_MOSH", "on");
+              } else {
+                setRoute({ page: "mosh-install" });
+              }
+            },
+            highlight: moshEnabled,
+          },
           {
             key: "u",
             label: "Update",
@@ -306,7 +328,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         moveCursor(1);
         return;
       }
-      if (key.upArrow || (input === "k" && focusColumn !== "sessions")) {
+      if (key.upArrow || (input === "k" && focusColumn === "repos")) {
         // In normal layout, up at top of team → sessions
         if (layout === "normal" && focusColumn === "team" && teamCursor === 0 && mine.length > 0) {
           setFocusColumn("sessions");
@@ -314,7 +336,7 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
           setSessionScrollOffset(Math.max(0, mine.length - maxVisible));
           return;
         }
-        // In repos/team columns, k is vim up (no kill conflict)
+        // In repos column, k is vim up (no kill conflict)
         if (currentCursor === 0) {
           setCursorArea("actions");
         } else {
@@ -322,14 +344,16 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
         }
         return;
       }
-      if (input === "k" && focusColumn === "sessions") {
-        // k in sessions column = kill
-        if (currentMaxItems > 0 && sessionCursor < mine.length) {
+      if (input === "k" && (focusColumn === "sessions" || focusColumn === "team")) {
+        // k in sessions or team column = kill
+        if (focusColumn === "sessions" && currentMaxItems > 0 && sessionCursor < mine.length) {
           if (selected.size > 0) {
             setDashMode({ mode: "confirm-bulk", sessionNames: [...selected] });
           } else {
             setDashMode({ mode: "confirm-end", sessionName: mine[sessionCursor].name });
           }
+        } else if (focusColumn === "team" && team.length > 0 && teamCursor < team.length) {
+          setDashMode({ mode: "confirm-end", sessionName: team[teamCursor].name });
         }
         return;
       }
@@ -450,6 +474,20 @@ export function App({ machine, npdevUser, version, isOnVPS, onAction }: Props) {
       <SetupPage
         machine={machine}
         onDone={() => setRoute({ page: "dashboard" })}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
+  // --- Route: Mosh Install ---
+  if (route.page === "mosh-install") {
+    return (
+      <MoshInstallPage
+        onInstalled={() => {
+          setMoshEnabled(true);
+          saveConfigField("NPDEV_MOSH", "on");
+          setRoute({ page: "dashboard" });
+        }}
         onBack={() => setRoute({ page: "dashboard" })}
       />
     );

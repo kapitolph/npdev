@@ -24,11 +24,21 @@ export async function sshExec(
   return { stdout: stdout.trim(), exitCode };
 }
 
-/** Run an interactive command with TTY passthrough (locally on VPS, or via SSH) */
-export async function sshInteractive(machine: Machine, command: string): Promise<number> {
-  const args = isOnVPS()
-    ? ["bash", "-c", command]
-    : ["ssh", "-t", ...SSH_OPTS, sshTarget(machine), command];
+/** Run an interactive command with TTY passthrough (locally on VPS, or via SSH/mosh) */
+export async function sshInteractive(
+  machine: Machine,
+  command: string,
+  opts?: { mosh?: boolean },
+): Promise<number> {
+  let args: string[];
+  if (isOnVPS()) {
+    args = ["bash", "-c", command];
+  } else if (opts?.mosh) {
+    const sshCmd = `ssh -o StrictHostKeyChecking=accept-new`;
+    args = ["mosh", `--ssh=${sshCmd}`, sshTarget(machine), "--", "bash", "-c", command];
+  } else {
+    args = ["ssh", "-t", ...SSH_OPTS, sshTarget(machine), command];
+  }
   const proc = Bun.spawn(args, {
     stdin: "inherit",
     stdout: "inherit",

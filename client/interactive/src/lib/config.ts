@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config, Machine } from "../types";
@@ -10,14 +10,35 @@ export const MACHINES_FILE = join(NPDEV_DIR, "machines.yaml");
 
 export async function loadConfig(): Promise<Config> {
   let npdevUser = "";
+  let moshEnabled = false;
   try {
     const content = await readFile(CONFIG_FILE, "utf-8");
-    const match = content.match(/NPDEV_USER="([^"]*)"/);
-    if (match) npdevUser = match[1];
+    const userMatch = content.match(/NPDEV_USER="([^"]*)"/);
+    if (userMatch) npdevUser = userMatch[1];
+    const moshMatch = content.match(/NPDEV_MOSH="([^"]*)"/);
+    if (moshMatch) moshEnabled = moshMatch[1] === "on";
   } catch {
     // No config file yet
   }
-  return { npdevUser };
+  return { npdevUser, moshEnabled };
+}
+
+export async function saveConfigField(key: string, value: string): Promise<void> {
+  await mkdir(NPDEV_DIR, { recursive: true });
+  let content = "";
+  try {
+    content = await readFile(CONFIG_FILE, "utf-8");
+  } catch {
+    // File doesn't exist yet
+  }
+  const pattern = new RegExp(`^${key}="[^"]*"$`, "m");
+  const line = `${key}="${value}"`;
+  if (pattern.test(content)) {
+    content = content.replace(pattern, line);
+  } else {
+    content = content.trimEnd() + (content.length > 0 ? "\n" : "") + line + "\n";
+  }
+  await writeFile(CONFIG_FILE, content);
 }
 
 export async function loadMachines(): Promise<Machine[]> {

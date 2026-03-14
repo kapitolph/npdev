@@ -9,6 +9,7 @@ import { cmdSyncKeys } from "./commands/sync-keys";
 import { cmdUpdate } from "./commands/update";
 import { isOnVPS, loadConfig, loadMachines } from "./lib/config";
 import { selectMachine } from "./lib/machine";
+import { isMoshInstalled } from "./lib/mosh";
 import { fetchSessions } from "./lib/sessions";
 import { checkVersion, NPDEV_VERSION } from "./lib/version";
 import type { Machine } from "./types";
@@ -139,7 +140,7 @@ async function main(): Promise<void> {
         await mainMenu(machine, npdevUser, version, machineOverride);
       } else {
         const { renderInkDashboard } = await import("./ui/ink/render");
-        await renderInkDashboard(machine, npdevUser, version);
+        await renderInkDashboard(machine, npdevUser, version, config.moshEnabled);
       }
     } else {
       // Non-TTY: quick shell (preserves bash behavior)
@@ -168,7 +169,8 @@ async function main(): Promise<void> {
       console.error("No active sessions.");
       process.exit(1);
     }
-    await cmdStart(machine, mine[0].name, npdevUser);
+    const moshOpts = config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
+    await cmdStart(machine, mine[0].name, npdevUser, undefined, undefined, moshOpts);
     process.exit(0);
   }
 
@@ -190,7 +192,8 @@ async function main(): Promise<void> {
     }
     const sessionName = branch.replace(/\//g, "-").replace(/[^a-zA-Z0-9_-]/g, "");
     const machine = await getMachine();
-    await cmdStart(machine, sessionName, npdevUser, `branch: ${branch}`);
+    const moshOpts = config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
+    await cmdStart(machine, sessionName, npdevUser, `branch: ${branch}`, undefined, moshOpts);
     process.exit(0);
   }
 
@@ -233,7 +236,8 @@ async function main(): Promise<void> {
   const machine = await getMachine();
   const sessionName = command;
   const description = remaining.slice(1).join(" ") || undefined;
-  await cmdStart(machine, sessionName, npdevUser, description);
+  const moshOpts = config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
+  await cmdStart(machine, sessionName, npdevUser, description, undefined, moshOpts);
 }
 
 main().catch((err) => {
