@@ -15,10 +15,13 @@ interface Props {
   focusedIndex: number;
   isFocusZone: boolean;
   contextDescription?: string;
+  searchQuery?: string;
+  searchResultCount?: number;
 }
 
-export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescription }: Props) {
+export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescription, searchQuery, searchResultCount }: Props) {
   const theme = useTheme();
+  const isSearching = searchQuery != null;
   const focusedDesc = isFocusZone ? buttons[focusedIndex]?.description : contextDescription;
 
   return (
@@ -45,7 +48,18 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescripti
         })}
       </Box>
       <Box paddingTop={1}>
-        <Text color={theme.overlay0}>{focusedDesc || " "}</Text>
+        {isSearching ? (
+          <>
+            <Text color={theme.accent}>/ </Text>
+            <Text color={theme.text}>{searchQuery}</Text>
+            <Text color={theme.accent}>▎</Text>
+            {searchResultCount != null && (
+              <Text color={theme.overlay0}> — {searchResultCount} result{searchResultCount !== 1 ? "s" : ""}</Text>
+            )}
+          </>
+        ) : (
+          <Text color={theme.overlay0}>{focusedDesc || " "}</Text>
+        )}
       </Box>
     </Box>
   );
