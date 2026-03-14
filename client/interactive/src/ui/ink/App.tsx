@@ -125,6 +125,10 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   // In stacked mode (normal layout with team), each half gets its own section header
   const maxVisibleStacked = Math.max(2, Math.floor((contentRows - sectionHeaderHeight * 2) / 4));
 
+  // Effective maxVisible for the current column (stacked sections get fewer rows)
+  const isStacked = layout === "normal" && hasTeam && (focusColumn === "sessions" || focusColumn === "team");
+  const effectiveMaxVisible = isStacked ? maxVisibleStacked : maxVisible;
+
   // Move cursor and scroll offset together
   const moveCursor = useCallback(
     (delta: number) => {
@@ -132,13 +136,13 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         const next = Math.max(0, Math.min(prev + delta, currentMaxItems - 1));
         setCurrentScrollOffset((offset) => {
           if (next < offset) return next;
-          if (next >= offset + maxVisible) return next - maxVisible + 1;
+          if (next >= offset + effectiveMaxVisible) return next - effectiveMaxVisible + 1;
           return offset;
         });
         return next;
       });
     },
-    [currentMaxItems, maxVisible, setCurrentCursor, setCurrentScrollOffset],
+    [currentMaxItems, effectiveMaxVisible, setCurrentCursor, setCurrentScrollOffset],
   );
 
   // Clamp cursors when lists change
@@ -353,7 +357,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         if (layout === "normal" && focusColumn === "team" && teamCursor === 0 && mine.length > 0) {
           setFocusColumn("sessions");
           setSessionCursor(mine.length - 1);
-          setSessionScrollOffset(Math.max(0, mine.length - maxVisible));
+          setSessionScrollOffset(Math.max(0, mine.length - maxVisibleStacked));
           return;
         }
         // In repos column, k is vim up (no kill conflict)
