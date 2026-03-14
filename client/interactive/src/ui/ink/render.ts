@@ -33,6 +33,18 @@ export async function renderInkDashboard(
         process.stdin.pause();
         process.stdin.removeAllListeners();
 
+        // Reset terminal state — Ink leaves raw mode and mouse reporting active,
+        // which corrupts stdin for the subsequent ssh/mosh child process
+        process.stdin.setRawMode?.(false);
+        process.stdout.write(
+          "\x1B[?1000l" + // disable mouse click reporting
+          "\x1B[?1002l" + // disable mouse drag reporting
+          "\x1B[?1003l" + // disable mouse all-movement reporting
+          "\x1B[?1006l" + // disable SGR mouse mode
+          "\x1B[?25h"   + // show cursor
+          "\x1Bc",        // full terminal reset (RIS)
+        );
+
         // Re-read config to get current mosh toggle state
         const config = await loadConfig();
         const useMosh = !onVPS && config.moshEnabled && isMoshInstalled();
