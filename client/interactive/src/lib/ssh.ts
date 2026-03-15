@@ -43,11 +43,12 @@ export async function sshInteractive(
     shellCmd = `exec ssh -t ${optsStr} ${target} ${shellEscape(command)}`;
   }
 
-  // Wrap in bash -c with stty sane to get a clean TTY.
-  // After Ink unmounts, Bun's inherited stdin may still carry raw-mode artifacts
-  // that corrupt the child process. A fresh bash + stty sane resets the line discipline.
-  const proc = Bun.spawn(["bash", "-c", `stty sane 2>/dev/null; ${shellCmd}`], {
-    stdin: "inherit",
+  // Open /dev/tty directly instead of inheriting Bun's stdin.
+  // After Ink unmounts, Bun's event loop still polls the inherited stdin fd,
+  // stealing bytes from the child process (causing dropped keystrokes and
+  // truncated pastes). By redirecting stdin from /dev/tty in a subshell,
+  // the child gets a clean, uncontested terminal connection.
+  const proc = Bun.spawn(["bash", "-c", `exec < /dev/tty; stty sane 2>/dev/null; ${shellCmd}`], {
     stdout: "inherit",
     stderr: "inherit",
   });
