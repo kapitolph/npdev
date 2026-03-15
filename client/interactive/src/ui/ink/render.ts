@@ -30,9 +30,9 @@ export async function renderInkDashboard(
         // Unmount Ink before taking over the terminal
         instance.unmount();
         // Release stdin so Bun's event loop stops polling it
-        process.stdin.pause();
         process.stdin.removeAllListeners();
         process.stdin.setRawMode?.(false);
+        process.stdin.destroy(); // Close the fd — Bun stops polling stdin
 
         // Re-read config to get current mosh toggle state
         const config = await loadConfig();

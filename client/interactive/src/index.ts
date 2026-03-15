@@ -1,4 +1,7 @@
-import { hostname } from "node:os";
+import { existsSync } from "node:fs";
+import { chmod, copyFile, mkdir, rename, writeFile } from "node:fs/promises";
+import { hostname, homedir } from "node:os";
+import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { cmdDescribe } from "./commands/describe";
 import { cmdEnd } from "./commands/end";
@@ -11,7 +14,7 @@ import { cmdShell } from "./commands/shell";
 import { cmdStart } from "./commands/start";
 import { cmdStatus } from "./commands/status";
 import { cmdSyncKeys } from "./commands/sync-keys";
-import { cmdUpdate } from "./commands/update";
+import { cmdUpdate, WRAPPER_SCRIPT } from "./commands/update";
 import { isOnVPS, loadConfig, loadMachines } from "./lib/config";
 import { selectMachine } from "./lib/machine";
 import { isMoshInstalled } from "./lib/mosh";
@@ -231,8 +234,56 @@ function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+/**
+ * Auto-bootstrap the wrapper on first client run.
+ * When the binary is running directly (no NPDEV_EXEC_FILE), install:
+ *   - npdev-core at ~/.npdev/bin/npdev-core
+ *   - wrapper script at ~/.local/bin/npdev
+ * Skips if npdev-core already exists (already bootstrapped) or on VPS.
+ */
+async function ensureWrapperInstalled(): Promise<void> {
+  // Already running via wrapper, or on the VPS — nothing to do
+  if (process.env.NPDEV_EXEC_FILE || isOnVPS()) return;
+
+  const coreBinDir = join(homedir(), ".npdev", "bin");
+  const corePath = join(coreBinDir, "npdev-core");
+
+  // Already bootstrapped
+  if (existsSync(corePath)) return;
+
+  try {
+    // Copy the running binary to ~/.npdev/bin/npdev-core
+    await mkdir(coreBinDir, { recursive: true });
+    const selfPath = process.execPath;
+    await copyFile(selfPath, corePath);
+    await chmod(corePath, 0o755);
+
+    // Ad-hoc sign on macOS — Apple Silicon kills unsigned Mach-O binaries
+    if (process.platform === "darwin") {
+      const { execSync } = await import("node:child_process");
+      try {
+        execSync(`codesign -s - "${corePath}"`, { stdio: "ignore" });
+      } catch {}
+    }
+
+    // Write wrapper script atomically to ~/.local/bin/npdev
+    const wrapperDir = join(homedir(), ".local", "bin");
+    const wrapperPath = join(wrapperDir, "npdev");
+    const tmpPath = `${wrapperPath}.tmp.${process.pid}`;
+    await mkdir(wrapperDir, { recursive: true });
+    await writeFile(tmpPath, WRAPPER_SCRIPT);
+    await chmod(tmpPath, 0o755);
+    await rename(tmpPath, wrapperPath);
+  } catch {
+    // Non-fatal — the stdin.destroy() fallback handles this run
+  }
+}
+
 async function main(): Promise<void> {
   const { command, remaining, flags } = parseArgs(process.argv.slice(2));
+
+  // Auto-bootstrap wrapper for future runs (non-blocking for this run)
+  await ensureWrapperInstalled();
 
   // Commands that don't need full config
   if (command === "update") {

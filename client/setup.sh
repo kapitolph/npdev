@@ -83,6 +83,7 @@ exit_code=$?
 if [ "$exit_code" -eq 10 ] && [ -f "$NPDEV_EXEC_FILE" ]; then
   cmd=$(cat "$NPDEV_EXEC_FILE")
   rm -f "$NPDEV_EXEC_FILE"
+  stty sane 2>/dev/null
   exec bash -c "$cmd"
 fi
 rm -f "$NPDEV_EXEC_FILE"

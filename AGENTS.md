@@ -7,15 +7,40 @@ Shared VPS pair programming system. All developers SSH as a single shared user (
 ```
 Client (engineer's machine)          VPS (shared dev server)
 ─────────────────────────────        ─────────────────────────────
-~/.local/bin/npdev (compiled bin)    ~/.vps/session.sh
-~/.npdev/config (NPDEV_USER)         ~/.vps/tmux.conf
-~/.npdev/machines.yaml               ~/.vps/sessions.yaml (registry)
-~/.ssh/vps/id_<name>_ed25519         ~/.vps/developers/<name>.env
-                                     ~/.vps/git-credential-token
+~/.local/bin/npdev (wrapper script)  ~/.vps/session.sh
+~/.npdev/bin/npdev-core (binary)     ~/.vps/tmux.conf
+~/.npdev/config (NPDEV_USER)         ~/.vps/sessions.yaml (registry)
+~/.npdev/machines.yaml               ~/.vps/developers/<name>.env
+~/.ssh/vps/id_<name>_ed25519         ~/.vps/git-credential-token
                                      ~/.vps/hooks/notify-attach.sh
                                      ~/.claude/hooks/identify-developer.sh
                                      ~/.claude/hooks/update-session-desc.sh
 ```
+
+### Wrapper + Binary Architecture (stdin handoff)
+
+The client uses a two-process model to avoid Bun stdin contention:
+
+```
+~/.local/bin/npdev          (bash wrapper)
+  └─ ~/.npdev/bin/npdev-core  (compiled Bun binary)
+       └─ Ink TUI renders, user picks session
+       └─ writes SSH command to $NPDEV_EXEC_FILE, exits 10
+  └─ wrapper reads exec file, runs: stty sane && exec bash -c "$cmd"
+```
+
+**Why**: After Ink unmounts, Bun's event loop still has stdin registered. Even with `pause()` + `removeAllListeners()`, the underlying fd stays open and pollable. When SSH spawns, both Bun and SSH's `/dev/tty` compete for terminal input — the kernel delivers keystrokes to whichever reads first, causing dropped/duplicated input.
+
+**How it works**:
+1. The wrapper script sets `NPDEV_EXEC_FILE=/tmp/npdev-exec-$$` and runs `npdev-core`
+2. `npdev-core` renders the Ink TUI, user selects a session
+3. The SSH command is written to `$NPDEV_EXEC_FILE` and the process exits with code 10
+4. The wrapper detects exit code 10, reads the command, runs `stty sane` (reset terminal from Ink raw mode), then `exec bash -c "$cmd"` — replacing itself with SSH
+5. Since the Bun process is fully dead before SSH starts, there's no stdin contention
+
+**Fallback (no wrapper)**: If the binary runs directly (e.g., old install, or first run before bootstrap), `process.stdin.destroy()` is called after Ink unmount. This closes the fd so Bun's event loop stops polling it. Less clean than the wrapper (SSH must reopen `/dev/tty`), but works.
+
+**Auto-bootstrap**: On first client run without a wrapper (`NPDEV_EXEC_FILE` not set, `~/.npdev/bin/npdev-core` doesn't exist), the binary copies itself to `npdev-core`, writes the wrapper script to `~/.local/bin/npdev` (atomic write via tmp + rename), and code-signs on macOS. The current invocation continues as the binary (fallback path), and subsequent runs go through the wrapper.
 
 ### Client (`client/`)
 
@@ -23,14 +48,14 @@ Client (engineer's machine)          VPS (shared dev server)
 |------|---------|
 | `client/npdev` | Legacy bash CLI (kept for fallback). |
 | `client/interactive/` | Bun/TypeScript interactive CLI. Compiled to standalone binary via `bun build --compile`. |
-| `client/interactive/src/index.ts` | Entry point: arg parsing → dashboard or subcommand dispatch. Handles `npdev -` (resume last), `npdev .` (branch session), first-run inline setup, VPS-native detection. |
+| `client/interactive/src/index.ts` | Entry point: arg parsing → dashboard or subcommand dispatch. Runs `ensureWrapperInstalled()` early to auto-bootstrap wrapper + npdev-core on first run. Handles `npdev -` (resume last), `npdev .` (branch session), first-run inline setup, VPS-native detection. |
 | `client/interactive/src/commands/` | One file per command: start, end, sessions, shell, setup, update, sync-keys. |
 | `client/interactive/src/lib/` | Shared modules: ssh (VPS-aware), config (with `isOnVPS()`), machine selection, version check, sessions (fetchSessions, relativeTime, activityAge). |
 | `client/interactive/src/ui/menu.ts` | Legacy text-menu dashboard (kept for `--old` fallback). |
 | `client/interactive/src/ui/welcome.ts` | Legacy welcome banner (no longer imported, kept for reference). |
 | `client/interactive/src/ui/ink/` | Ink-based TUI dashboard (default). See **Ink TUI Architecture** below. |
 | `client/interactive/build.sh` | Cross-platform `bun build --compile` (linux-x64, darwin-arm64, darwin-x64). |
-| `client/setup.sh` | Idempotent installer. Downloads compiled binary from GitHub releases (falls back to bash script). |
+| `client/setup.sh` | Idempotent installer. Downloads compiled binary to `~/.npdev/bin/npdev-core`, installs wrapper script to `~/.local/bin/npdev` (with `stty sane` + exec handoff), code-signs on macOS. Falls back to GitHub releases when no local build. |
 
 #### Ink TUI Architecture
 
@@ -91,7 +116,7 @@ ThemeProvider (render.ts)
 - **Single shared user (`dev`)**: Enables tmux session sharing. Two devs running `npdev feature-x` attach to the same terminal.
 - **Per-developer identity**: `~/.vps/developers/<name>.env` sets `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL`, `GH_TOKEN`. Sourced by `session.sh` at session start.
 - **Git credential helper**: `~/.vps/git-credential-token` reads `GH_TOKEN` from the session environment and passes it to git for HTTPS auth. Configured via `git config --global credential.helper`.
-- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` is a compiled Bun binary with interactive dashboard (Ink TUI).
+- **Self-contained client**: After `npdev update` or `client/setup.sh`, the repo clone is not needed. `npdev` is a bash wrapper that execs `npdev-core` (compiled Bun binary). The wrapper handles stdin handoff to avoid Bun/SSH contention (see **Wrapper + Binary Architecture** above). Auto-bootstraps on first run if only the bare binary is installed.
 - **Version check**: On every run, `npdev` checks GitHub for a newer version and warns the user.
 - **Smart dashboard**: Running `npdev` with no args on a TTY shows an Ink-based TUI with dual themes (teal on VPS, mauve remote), navigable button bar, full-width session highlights, responsive layout (wide/normal/narrow), and tab-based focus zones. Non-TTY falls back to quick shell. `--old` flag uses the legacy text menu.
 - **VPS-native mode**: When `~/.vps` exists, `npdev` runs commands locally (no SSH to self) and uses `tmux switch-client` instead of `attach-session` when already inside tmux.
@@ -168,6 +193,7 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 - **`sed -i` portability**: `sed -i` (no backup suffix) works on Linux (GNU sed) but not macOS (BSD sed). Server scripts run on Linux VPS only. Client scripts avoid `sed -i`.
 - **YAML parsing**: `machines.yaml` and `sessions.yaml` are parsed with `awk`, not a YAML library. Keep the structure flat — no nested objects, no multi-line strings.
 - **No global git identity on VPS**: Git identity is per-session via developer env files. Running git commands outside a session (e.g. bare SSH) requires sourcing `~/.vps/developers/<name>.env` first.
+- **Bun stdin contention after Ink**: Bun's event loop keeps stdin registered even after `pause()` + `removeAllListeners()`. The fd stays open and pollable, so SSH and Bun race for terminal input. Fix: the wrapper exits the Bun process entirely before exec'ing SSH; the fallback calls `process.stdin.destroy()` to close the fd. Do not try to "fix" this with just `pause()` — it doesn't work.
 - **`isOnVPS()` detection**: Uses `existsSync("~/.vps")`. When true, SSH functions run commands locally via `bash -c` instead of over SSH, and `tmux switch-client` is used instead of `attach-session`.
 
 ## Development Workflow
@@ -202,9 +228,29 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 2. Run `server/setup.sh` on the new machine (via SSH or curl-pipe).
 3. Commit and push. Users pick it up via `npdev update`.
 
+### Architecture Decision Records (ADRs)
+
+ADRs live in `docs/adr/` and document significant technical decisions — the context, options considered, and chosen approach. See `docs/adr/README.md` for the format.
+
+**When to create an ADR:**
+- Changing the distribution or deployment model
+- Introducing a new architectural pattern (e.g., process handoff, IPC mechanism)
+- Choosing between multiple viable approaches where the reasoning isn't obvious
+- Making a decision that future contributors might question or want to revisit
+- Working around a platform limitation or runtime bug
+
+**When NOT to create an ADR:**
+- Adding a new feature with straightforward implementation
+- Bug fixes with obvious solutions
+- Refactoring that doesn't change architecture
+- Dependency updates
+
+Number ADRs sequentially (`0001`, `0002`, ...) and update the index in `docs/adr/README.md`.
+
 ### Self-Update Checklist
 
 After any change, verify:
 - [ ] `server/setup.sh` reflects any new server-side state
 - [ ] `AGENTS.md` updated with new context
 - [ ] `README.md` updated if CLI commands or user-facing behavior changed
+- [ ] ADR added if an architectural decision was made (see above)

@@ -6,7 +6,7 @@ import { MACHINES_FILE, npdevDir } from "../lib/config";
 
 const GITHUB_REPO = "kapitolph/npdev";
 
-const WRAPPER_SCRIPT = `#!/usr/bin/env bash
+export const WRAPPER_SCRIPT = `#!/usr/bin/env bash
 NPDEV_CORE="\${HOME}/.npdev/bin/npdev-core"
 [ -x "$NPDEV_CORE" ] || { echo "npdev-core not found. Run: npdev update" >&2; exit 1; }
 export NPDEV_EXEC_FILE="/tmp/npdev-exec-$$"
@@ -15,6 +15,7 @@ exit_code=$?
 if [ "$exit_code" -eq 10 ] && [ -f "$NPDEV_EXEC_FILE" ]; then
   cmd=$(cat "$NPDEV_EXEC_FILE")
   rm -f "$NPDEV_EXEC_FILE"
+  stty sane 2>/dev/null
   exec bash -c "$cmd"
 fi
 rm -f "$NPDEV_EXEC_FILE"
