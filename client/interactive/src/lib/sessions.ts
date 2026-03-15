@@ -1,26 +1,51 @@
 import type { CommitData, Machine, RepoData, SessionData } from "../types";
+import { invalidDataError, remoteError } from "./errors";
 import { sshExec } from "./ssh";
 
 export async function fetchSessions(machine: Machine): Promise<SessionData[]> {
   const { stdout, exitCode } = await sshExec(machine, "bash ~/.vps/session.sh session-data");
-  if (exitCode !== 0 || !stdout) return [];
+  if (exitCode !== 0) {
+    throw remoteError("Failed to fetch session data from VPS", { exit_code: exitCode });
+  }
+  if (!stdout) return [];
   try {
     return JSON.parse(stdout);
-  } catch {
-    return [];
+  } catch (error) {
+    throw invalidDataError("Failed to parse session data from VPS", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
 export async function fetchRepos(machine: Machine): Promise<RepoData[]> {
   const { stdout, exitCode } = await sshExec(machine, "bash ~/.vps/session.sh repo-list");
-  if (exitCode !== 0 || !stdout) return [];
-  try { return JSON.parse(stdout); } catch { return []; }
+  if (exitCode !== 0) {
+    throw remoteError("Failed to fetch repo data from VPS", { exit_code: exitCode });
+  }
+  if (!stdout) return [];
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    throw invalidDataError("Failed to parse repo data from VPS", {
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function fetchRepoCommits(machine: Machine, repoPath: string): Promise<CommitData[]> {
   const { stdout, exitCode } = await sshExec(machine, `bash ~/.vps/session.sh repo-commits '${repoPath}' 15`);
-  if (exitCode !== 0 || !stdout) return [];
-  try { return JSON.parse(stdout); } catch { return []; }
+  if (exitCode !== 0) {
+    throw remoteError("Failed to fetch repo commits from VPS", { exit_code: exitCode, repo_path: repoPath });
+  }
+  if (!stdout) return [];
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    throw invalidDataError("Failed to parse repo commits from VPS", {
+      repo_path: repoPath,
+      cause: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export function deriveRepoName(session: SessionData, repos: RepoData[]): string | undefined {

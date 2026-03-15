@@ -13,11 +13,26 @@ import { cmdSetup } from "./commands/setup";
 import { cmdShell } from "./commands/shell";
 import { cmdStart } from "./commands/start";
 import { cmdStatus } from "./commands/status";
+import {
+  cmdSummariesGenerate,
+  cmdSummariesGet,
+  cmdSummariesLatest,
+  cmdSummariesList,
+} from "./commands/summaries";
 import { cmdSyncKeys } from "./commands/sync-keys";
 import { cmdUpdate, WRAPPER_SCRIPT } from "./commands/update";
 import { isOnVPS, loadConfig, loadMachines } from "./lib/config";
+import {
+  EXIT_CODES,
+  renderError,
+  usageError,
+  configError,
+  notFoundError,
+} from "./lib/errors";
 import { selectMachine } from "./lib/machine";
 import { isMoshInstalled } from "./lib/mosh";
+import { buildCapabilitiesDocument, buildSpecDocument, findCommandSpec } from "./lib/spec";
+import type { SummaryWindow } from "./lib/summaries";
 import { fetchSessions } from "./lib/sessions";
 import { checkVersion, NPDEV_VERSION } from "./lib/version";
 import type { Machine } from "./types";
@@ -45,16 +60,29 @@ Repository Info:
 VPS Overview:
   npdev status [--json]           Sessions, repos, who's online
 
+Summaries:
+  npdev summaries list [--json]                     List generated summaries
+  npdev summaries latest [--json]                   Get newest generated summary
+  npdev summaries get --id <id> [--json]            Get one summary by id
+  npdev summaries generate --window 3h|daily [--json]
+                                                    Generate a summary
+
 Setup & Maintenance:
   npdev setup                     Set up developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
   npdev update                    Update npdev binary + machine list
+  npdev spec --json               Show agent-facing CLI contract
+  npdev spec command <path> --json
+                                  Show one command contract
+  npdev capabilities --json       Show non-interactive capabilities
 
 Global Flags:
   --json                          Output JSON (for scripts and agents)
   --user <name>                   Override developer identity
   --machine <name>                Select VPS when multiple configured
   --old                           Use classic menu (fallback)
+  --id <summary-id>               Summary id for "summaries get"
+  --window 3h|daily               Window for "summaries generate"
   --version, -v                   Show version
   --help, -h                      Show this help
 
@@ -155,6 +183,25 @@ to ~/.ssh/authorized_keys on the VPS.`,
   update: `npdev update
 
 Update the npdev binary and machines.yaml from the latest GitHub release.`,
+
+  summaries: `npdev summaries <list|latest|get|generate> [flags]
+
+Non-interactive access to generated diary summaries on the VPS.
+
+Examples:
+  npdev summaries list --json
+  npdev summaries latest --json
+  npdev summaries get --id 3h-2026-03-15T06:55 --json
+  npdev summaries generate --window daily --json`,
+
+  spec: `npdev spec --json
+npdev spec command <path> --json
+
+Show the machine-readable contract for the non-interactive CLI.`,
+
+  capabilities: `npdev capabilities --json
+
+Show the machine-readable list of non-interactive capabilities.`,
 };
 
 interface ParsedArgs {
@@ -167,6 +214,8 @@ interface ParsedArgs {
     old: boolean;
     desc?: string;
     repo?: string;
+    id?: string;
+    window?: string;
   };
 }
 
@@ -175,6 +224,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   let user: string | undefined;
   let desc: string | undefined;
   let repo: string | undefined;
+  let id: string | undefined;
+  let window: string | undefined;
   let json = false;
   let old = false;
   const remaining: string[] = [];
@@ -184,19 +235,27 @@ function parseArgs(argv: string[]): ParsedArgs {
     switch (argv[i]) {
       case "--machine":
         machine = argv[++i];
-        if (!machine) { console.error("--machine requires a name"); process.exit(1); }
+        if (!machine) throw usageError("--machine requires a name");
         break;
       case "--user":
         user = argv[++i];
-        if (!user) { console.error("--user requires a name"); process.exit(1); }
+        if (!user) throw usageError("--user requires a name");
         break;
       case "--desc":
         desc = argv[++i];
-        if (!desc) { console.error("--desc requires a value"); process.exit(1); }
+        if (!desc) throw usageError("--desc requires a value");
         break;
       case "--repo":
         repo = argv[++i];
-        if (!repo) { console.error("--repo requires a path"); process.exit(1); }
+        if (!repo) throw usageError("--repo requires a path");
+        break;
+      case "--id":
+        id = argv[++i];
+        if (!id) throw usageError("--id requires a summary id");
+        break;
+      case "--window":
+        window = argv[++i];
+        if (!window) throw usageError("--window requires a value");
         break;
       case "--json":
         json = true;
@@ -230,7 +289,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     command: remaining[0] || "",
     remaining: remaining.slice(1),
-    flags: { json, machine, user, old, desc, repo },
+    flags: { json, machine, user, old, desc, repo, id, window },
   };
 }
 
@@ -279,6 +338,10 @@ async function ensureWrapperInstalled(): Promise<void> {
   }
 }
 
+function printJson(doc: Record<string, unknown>): void {
+  console.log(JSON.stringify(doc, null, 2));
+}
+
 async function main(): Promise<void> {
   const { command, remaining, flags } = parseArgs(process.argv.slice(2));
 
@@ -286,6 +349,25 @@ async function main(): Promise<void> {
   await ensureWrapperInstalled();
 
   // Commands that don't need full config
+  if (command === "spec") {
+    if (remaining[0] === "command") {
+      const path = remaining.slice(1).join(" ");
+      if (!path) throw usageError("Usage: npdev spec command <path> --json");
+      const spec = findCommandSpec(path);
+      if (!spec) throw notFoundError(`Unknown command path: ${path}`, { path });
+      printJson({
+        contract_version: buildSpecDocument().contract_version,
+        command: spec,
+      });
+      process.exit(0);
+    }
+    printJson(buildSpecDocument());
+    process.exit(0);
+  }
+  if (command === "capabilities") {
+    printJson(buildCapabilitiesDocument());
+    process.exit(0);
+  }
   if (command === "update") {
     await cmdUpdate();
     process.exit(0);
@@ -312,8 +394,7 @@ async function main(): Promise<void> {
   // Check machines exist
   const machines = await loadMachines();
   if (machines.length === 0 && !isOnVPS()) {
-    console.error("npdev not configured. Run: npdev update (or bash client/setup.sh from repo)");
-    process.exit(1);
+    throw configError("npdev not configured. Run: npdev update (or bash client/setup.sh from repo)");
   }
 
   // Version check (non-blocking, skip for JSON/non-interactive)
@@ -324,7 +405,7 @@ async function main(): Promise<void> {
     if (isOnVPS()) {
       return { name: hostname(), host: "localhost", user: "dev", description: "local" };
     }
-    return selectMachine(flags.machine);
+    return selectMachine(flags.machine, { interactive: process.stdin.isTTY && !flags.json });
   };
 
   const moshOpts = config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
@@ -339,7 +420,7 @@ async function main(): Promise<void> {
         p.log.warn("Developer identity not set. Let's fix that.");
         await cmdSetup(flags.machine);
         const reloaded = await loadConfig();
-        if (!reloaded.npdevUser) { console.error("Setup incomplete."); process.exit(1); }
+        if (!reloaded.npdevUser) throw configError("Setup incomplete.");
         npdevUser = reloaded.npdevUser;
       }
       const version = await versionPromise;
@@ -351,7 +432,7 @@ async function main(): Promise<void> {
         await renderInkDashboard(machine, npdevUser, version, config.moshEnabled);
       }
     } else {
-      if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+      if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
       const machine = await getMachine();
       await cmdShell(machine, npdevUser);
     }
@@ -360,26 +441,25 @@ async function main(): Promise<void> {
 
   // npdev - : resume most recent
   if (command === "-") {
-    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
     const machine = await getMachine();
     const sessions = await fetchSessions(machine);
     const mine = sessions
       .filter((s) => s.owner === npdevUser)
       .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
-    if (mine.length === 0) { console.error("No active sessions."); process.exit(1); }
+    if (mine.length === 0) throw usageError("No active sessions.");
     await cmdStart(machine, mine[0].name, npdevUser, undefined, undefined, moshOpts);
     process.exit(0);
   }
 
   // npdev . : session from current git branch
   if (command === ".") {
-    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
     const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], { stdout: "pipe", stderr: "pipe" });
     const branch = (await new Response(proc.stdout).text()).trim();
     const exitCode = await proc.exited;
     if (exitCode !== 0 || !branch || branch === "HEAD") {
-      console.error("Not on a git branch (detached HEAD or not a repo).");
-      process.exit(1);
+      throw usageError("Not on a git branch (detached HEAD or not a repo).");
     }
     const sessionName = branch.replace(/\//g, "-").replace(/[^a-zA-Z0-9_-]/g, "");
     const machine = await getMachine();
@@ -412,8 +492,8 @@ async function main(): Promise<void> {
   // npdev start <name> [--desc ".."] [--repo <path>]
   if (command === "start") {
     const name = remaining[0];
-    if (!name) { console.error("Usage: npdev start <name> [--desc \"...\"] [--repo <path>]"); process.exit(1); }
-    if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+    if (!name) throw usageError("Usage: npdev start <name> [--desc \"...\"] [--repo <path>]");
+    if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
     const machine = await getMachine();
     await cmdStart(machine, name, npdevUser, flags.desc, flags.repo, moshOpts);
     process.exit(0);
@@ -422,7 +502,7 @@ async function main(): Promise<void> {
   // npdev end <name>
   if (command === "end") {
     const name = remaining[0];
-    if (!name) { console.error("Usage: npdev end <name>"); process.exit(1); }
+    if (!name) throw usageError("Usage: npdev end <name>");
     const machine = await getMachine();
     await cmdEnd(machine, name);
     return;
@@ -432,7 +512,7 @@ async function main(): Promise<void> {
   if (command === "describe") {
     const name = remaining[0];
     const desc = remaining.slice(1).join(" ") || flags.desc;
-    if (!name || !desc) { console.error("Usage: npdev describe <name> <description>"); process.exit(1); }
+    if (!name || !desc) throw usageError("Usage: npdev describe <name> <description>");
     const machine = await getMachine();
     await cmdDescribe(machine, name, desc);
     return;
@@ -448,7 +528,7 @@ async function main(): Promise<void> {
   // npdev repo <name|path> [--json]
   if (command === "repo") {
     const nameOrPath = remaining[0];
-    if (!nameOrPath) { console.error("Usage: npdev repo <name|path> [--json]"); process.exit(1); }
+    if (!nameOrPath) throw usageError("Usage: npdev repo <name|path> [--json]");
     const machine = await getMachine();
     await cmdRepoInfo(machine, nameOrPath, { json: flags.json });
     process.exit(0);
@@ -468,14 +548,42 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (command === "summaries") {
+    const subcommand = remaining[0];
+    if (!subcommand) throw usageError("Usage: npdev summaries <list|latest|get|generate> [flags]");
+    const machine = await getMachine();
+    if (subcommand === "list") {
+      await cmdSummariesList(machine, { json: flags.json });
+      process.exit(0);
+    }
+    if (subcommand === "latest") {
+      await cmdSummariesLatest(machine, { json: flags.json });
+      process.exit(0);
+    }
+    if (subcommand === "get") {
+      if (!flags.id) throw usageError("Usage: npdev summaries get --id <summary-id> [--json]");
+      await cmdSummariesGet(machine, flags.id, { json: flags.json });
+      process.exit(0);
+    }
+    if (subcommand === "generate") {
+      if (flags.window !== "3h" && flags.window !== "daily") {
+        throw usageError("Usage: npdev summaries generate --window 3h|daily [--json]");
+      }
+      await cmdSummariesGenerate(machine, flags.window as SummaryWindow, { json: flags.json });
+      process.exit(0);
+    }
+    throw usageError(`Unknown summaries subcommand: ${subcommand}`, { subcommand });
+  }
+
   // Default: treat as session name (npdev my-feature [description...])
-  if (!npdevUser) { console.error("Developer identity not set. Run: npdev setup"); process.exit(1); }
+  if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
   const machine = await getMachine();
   const description = remaining.join(" ") || undefined;
   await cmdStart(machine, command, npdevUser, description, undefined, moshOpts);
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+  const jsonRequested = process.argv.includes("--json");
+  const rendered = renderError(err, jsonRequested);
+  process.exit(rendered.exitCode ?? EXIT_CODES.internal);
 });

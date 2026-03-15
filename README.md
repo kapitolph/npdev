@@ -45,6 +45,11 @@ Detach without killing the session: `Ctrl+B, D`
 | `npdev <name> [desc]` | Create or attach to named session |
 | `npdev list` | List all sessions |
 | `npdev end <name>` | End a session |
+| `npdev sessions/repos/repo/status --json` | Non-interactive machine-readable session and repo data |
+| `npdev summaries list/latest/get/generate --json` | Read or generate VPS diary summaries |
+| `npdev spec --json` | Show the agent-facing CLI contract |
+| `npdev spec command <path> --json` | Show one command contract |
+| `npdev capabilities --json` | Show non-interactive capability metadata |
 | `npdev sync-keys` | Sync `keys/*.pub` from GitHub to VPS `authorized_keys` |
 | `npdev update` | Update npdev binary + machines config from GitHub |
 | `npdev setup` | Set up developer identity (git + GitHub token) |
@@ -53,6 +58,8 @@ Detach without killing the session: `Ctrl+B, D`
 | `npdev --help` | Full usage |
 
 The interactive menu (run `npdev` with no args) also includes session cleanup — interactively select and end old sessions, with a filter for your own vs all sessions.
+
+Agent-focused usage, examples, and JSON/error contracts live in [docs/agent-cli.md](docs/agent-cli.md).
 
 ## Adding a Developer
 

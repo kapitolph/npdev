@@ -1,26 +1,34 @@
 import * as p from "@clack/prompts";
 import type { Machine } from "../types";
 import { loadMachines } from "./config";
+import { configError, notFoundError, usageError } from "./errors";
 
-export async function selectMachine(machineOverride?: string): Promise<Machine> {
+export async function selectMachine(
+  machineOverride?: string,
+  opts: { interactive?: boolean } = {},
+): Promise<Machine> {
   const machines = await loadMachines();
 
   if (machines.length === 0) {
-    console.error("Error: No machines defined. Run: npdev update");
-    process.exit(1);
+    throw configError("No machines defined. Run: npdev update");
   }
 
   if (machineOverride) {
     const m = machines.find((m) => m.name === machineOverride);
     if (!m) {
-      console.error(`Error: Machine '${machineOverride}' not found`);
-      process.exit(1);
+      throw notFoundError(`Machine '${machineOverride}' not found`, { machine: machineOverride });
     }
     return m;
   }
 
   if (machines.length === 1) {
     return machines[0];
+  }
+
+  if (opts.interactive === false) {
+    throw usageError("Multiple machines configured. Pass --machine <name> for non-interactive use.", {
+      machines: machines.map((machine) => machine.name),
+    });
   }
 
   const choice = await p.select({

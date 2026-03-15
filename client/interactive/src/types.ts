@@ -39,3 +39,14 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
 }
+
+export interface SummaryJsonlRecord {
+  timestamp: string;
+  label: string;
+  signals: string;
+  collaborators: string;
+  capabilities: string;
+  state: string;
+  significance: string;
+  questions: string;
+}

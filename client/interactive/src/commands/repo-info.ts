@@ -1,4 +1,5 @@
 import { fetchRepoCommits, fetchRepos, fetchSessions, relativeTime } from "../lib/sessions";
+import { notFoundError } from "../lib/errors";
 import type { Machine } from "../types";
 
 export async function cmdRepoInfo(
@@ -11,9 +12,10 @@ export async function cmdRepoInfo(
   // Match by name or path
   const repo = repos.find(r => r.name === nameOrPath || r.path === nameOrPath);
   if (!repo) {
-    console.error(`Repo not found: ${nameOrPath}`);
-    console.error(`Available repos: ${repos.map(r => r.name).join(", ")}`);
-    process.exit(1);
+    throw notFoundError(`Repo not found: ${nameOrPath}`, {
+      requested: nameOrPath,
+      available: repos.map(r => r.name),
+    });
   }
 
   const [sessions, commits] = await Promise.all([

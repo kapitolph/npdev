@@ -1,4 +1,5 @@
 import { sshInteractive } from "../lib/ssh";
+import { usageError } from "../lib/errors";
 import type { Machine } from "../types";
 
 export async function cmdStart(
@@ -10,10 +11,9 @@ export async function cmdStart(
   opts?: { mosh?: boolean },
 ): Promise<void> {
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    console.error(
-      "Error: Session name must contain only letters, numbers, hyphens, and underscores.",
-    );
-    process.exit(1);
+    throw usageError("Session name must contain only letters, numbers, hyphens, and underscores.", {
+      name,
+    });
   }
 
   const desc = description || "(no description)";

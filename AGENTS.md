@@ -204,9 +204,11 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 2. **Do NOT manually bump `NPDEV_VERSION`** — CI auto-increments it on push to main.
 3. **Update `server/setup.sh`** if changing anything server-side — it's the canonical provisioner and should stay in sync with manual changes.
 4. **Update this `AGENTS.md`** if changing architecture, adding files, or discovering new gotchas.
-5. Commit and push. CI will build, version, and release automatically if client source changed.
-6. If server files changed, deploy directly via `scp` (avoids GitHub CDN caching): `scp server/session.sh dev@<host>:~/.vps/session.sh` and `scp server/tmux.conf dev@<host>:~/.vps/tmux.conf`. For full re-provisioning: `scp -r server/ dev@<host>:/tmp/dev-vps-server && ssh dev@<host> "sudo bash /tmp/dev-vps-server/setup.sh"`
-7. If client files changed, users run `npdev update` (they'll be warned automatically by the version check).
+5. **When TUI features change**, evaluate non-interactive parity in the same PR. If parity is intentionally deferred, record the deferment in an issue or explicit note.
+6. **Treat non-interactive JSON as a compatibility surface**. Breaking payload changes require versioning and migration notes in docs.
+7. Commit and push. CI will build, version, and release automatically if client source changed.
+8. If server files changed, deploy directly via `scp` (avoids GitHub CDN caching): `scp server/session.sh dev@<host>:~/.vps/session.sh` and `scp server/tmux.conf dev@<host>:~/.vps/tmux.conf`. For full re-provisioning: `scp -r server/ dev@<host>:/tmp/dev-vps-server && ssh dev@<host> "sudo bash /tmp/dev-vps-server/setup.sh"`
+9. If client files changed, users run `npdev update` (they'll be warned automatically by the version check).
 
 ### Testing
 
@@ -253,4 +255,6 @@ After any change, verify:
 - [ ] `server/setup.sh` reflects any new server-side state
 - [ ] `AGENTS.md` updated with new context
 - [ ] `README.md` updated if CLI commands or user-facing behavior changed
+- [ ] Non-interactive parity reviewed for any TUI change, or an explicit deferment note/issue added
+- [ ] JSON compatibility or migration notes added for any non-backward-compatible non-interactive change
 - [ ] ADR added if an architectural decision was made (see above)
