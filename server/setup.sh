@@ -325,14 +325,39 @@ info "Installing npdev CLI on VPS..."
 NPDEV_INSTALL_DIR="/home/$SHARED_USER/.local/bin"
 mkdir -p "$NPDEV_INSTALL_DIR"
 
-# On VPS, run npdev from built bundle via bun (rebuild with: cd ~/npdev/client/interactive && bun run build)
-cat > "$NPDEV_INSTALL_DIR/npdev" << 'NPDEV_WRAPPER'
+# Download the latest compiled binary from GitHub releases
+NPDEV_BINARY="$NPDEV_INSTALL_DIR/npdev"
+NPDEV_ASSET="npdev-linux-x64"
+NPDEV_DOWNLOAD_URL="https://github.com/kapitolph/npdev/releases/latest/download/$NPDEV_ASSET"
+if curl -fsSL "$NPDEV_DOWNLOAD_URL" -o "$NPDEV_BINARY"; then
+  chmod +x "$NPDEV_BINARY"
+  ok "npdev CLI installed ($("$NPDEV_BINARY" --version 2>/dev/null || echo 'latest'))"
+else
+  warn "Could not download npdev binary — falling back to bun wrapper"
+  cat > "$NPDEV_BINARY" << 'NPDEV_WRAPPER'
 #!/bin/bash
 exec bun run /home/dev/npdev/client/interactive/dist/npdev.js "$@"
 NPDEV_WRAPPER
-chmod +x "$NPDEV_INSTALL_DIR/npdev"
+  chmod +x "$NPDEV_BINARY"
+fi
 chown -R "$SHARED_USER:$SHARED_GROUP" "$NPDEV_INSTALL_DIR"
-ok "npdev CLI available on VPS (runs from source)"
+
+# ─── Step 15b: Set up npdev auto-update cron ─────────────────────────────────
+info "Setting up npdev auto-update..."
+
+NPDEV_UPDATER="/home/$SHARED_USER/.local/bin/npdev-auto-update"
+if [[ -n "$REPO_ROOT" ]] && [[ -f "$REPO_ROOT/tools/auto-update-npdev.sh" ]]; then
+  cp "$REPO_ROOT/tools/auto-update-npdev.sh" "$NPDEV_UPDATER"
+else
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/tools/auto-update-npdev.sh" -o "$NPDEV_UPDATER"
+fi
+chmod +x "$NPDEV_UPDATER"
+chown "$SHARED_USER:$SHARED_GROUP" "$NPDEV_UPDATER"
+
+# Install cron job (idempotent — replaces any existing npdev-auto-update entry)
+CRON_LINE="*/5 * * * * $NPDEV_UPDATER"
+run_as_dev "crontab -l 2>/dev/null | grep -v 'npdev-auto-update' | grep -v 'auto-update-npdev' | { cat; echo '$CRON_LINE'; } | crontab -"
+ok "npdev auto-update cron installed (every 5 minutes)"
 
 # ─── Step 16: Configure dev user's shell PATH ────────────────────────────────
 info "Configuring shell environment..."
