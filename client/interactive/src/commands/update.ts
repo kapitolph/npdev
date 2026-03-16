@@ -10,29 +10,16 @@ export const WRAPPER_SCRIPT = `#!/usr/bin/env bash
 NPDEV_CORE="\${HOME}/.npdev/bin/npdev-core"
 [ -x "$NPDEV_CORE" ] || { echo "npdev-core not found. Run: npdev update" >&2; exit 1; }
 export NPDEV_EXEC_FILE="/tmp/npdev-exec-$$"
-trap 'rm -f "$NPDEV_EXEC_FILE"' EXIT
-had_args=false
-[ $# -gt 0 ] && had_args=true
-while true; do
-  "$NPDEV_CORE" "$@"
-  exit_code=$?
-  if [ "$exit_code" -eq 10 ] && [ -f "$NPDEV_EXEC_FILE" ]; then
-    cmd=$(cat "$NPDEV_EXEC_FILE")
-    rm -f "$NPDEV_EXEC_FILE"
-    stty sane 2>/dev/null
-    bash -c "$cmd"
-    stty sane 2>/dev/null
-    # Only loop back to dashboard if originally launched without args (dashboard mode)
-    if [ "$had_args" = true ]; then
-      exit 0
-    fi
-    clear
-    set --
-    continue
-  fi
+"$NPDEV_CORE" "$@"
+exit_code=$?
+if [ "$exit_code" -eq 10 ] && [ -f "$NPDEV_EXEC_FILE" ]; then
+  cmd=$(cat "$NPDEV_EXEC_FILE")
   rm -f "$NPDEV_EXEC_FILE"
-  exit $exit_code
-done
+  stty sane 2>/dev/null
+  exec bash -c "$cmd"
+fi
+rm -f "$NPDEV_EXEC_FILE"
+exit $exit_code
 `;
 
 interface UpdateOptions {
