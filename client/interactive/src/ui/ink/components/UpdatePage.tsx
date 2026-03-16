@@ -40,12 +40,37 @@ function ProgressBar({
 }
 
 interface Props {
+  channel: "stable" | "nightly";
+  nightlyTag?: string;
   onDone: () => void;
 }
 
-export function UpdatePage({ onDone }: Props) {
+async function findLatestNightlyTag(): Promise<string | null> {
+  try {
+    const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=10`, {
+      signal: AbortSignal.timeout(3000),
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!resp.ok) return null;
+    const releases = (await resp.json()) as Array<{
+      tag_name?: string;
+      prerelease?: boolean;
+    }>;
+    for (const rel of releases) {
+      if (rel.prerelease && rel.tag_name?.includes("-nightly.")) {
+        return rel.tag_name;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function UpdatePage({ channel, nightlyTag, onDone }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
+  const isNightly = channel === "nightly";
   const [state, setState] = useState<StepState>({
     step: "machines",
     progress: 0,
@@ -90,31 +115,51 @@ export function UpdatePage({ onDone }: Props) {
     // Brief pause for visual
     await new Promise((r) => setTimeout(r, 300));
 
-    // Step 2: version
+    // Step 2: version / tag resolution
     setState((s) => ({
       ...s,
       step: "version",
       progress: 0,
-      message: "Checking latest version...",
+      message: isNightly ? "Finding latest nightly..." : "Checking latest version...",
     }));
+
     let newVersion = "unknown";
-    try {
-      const vResp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-        signal: AbortSignal.timeout(3000),
-        headers: { Accept: "application/vnd.github+json" },
-      });
-      if (vResp.ok) {
-        const data = (await vResp.json()) as { tag_name?: string };
-        if (data.tag_name) newVersion = data.tag_name.replace(/^v/, "");
+    let resolvedTag: string | null = nightlyTag || null;
+
+    if (isNightly) {
+      if (!resolvedTag) {
+        resolvedTag = await findLatestNightlyTag();
       }
-    } catch {
-      // continue
+      if (resolvedTag) {
+        newVersion = resolvedTag.replace(/^v/, "");
+      } else {
+        setState((s) => ({
+          ...s,
+          step: "error",
+          error: "No nightly releases found",
+        }));
+        return;
+      }
+    } else {
+      try {
+        const vResp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+          signal: AbortSignal.timeout(3000),
+          headers: { Accept: "application/vnd.github+json" },
+        });
+        if (vResp.ok) {
+          const data = (await vResp.json()) as { tag_name?: string };
+          if (data.tag_name) newVersion = data.tag_name.replace(/^v/, "");
+        }
+      } catch {
+        // continue
+      }
     }
+
     setState((s) => ({
       ...s,
       progress: 1,
       newVersion,
-      message: `Latest: v${newVersion}`,
+      message: isNightly ? `Nightly: v${newVersion}` : `Latest: v${newVersion}`,
     }));
 
     await new Promise((r) => setTimeout(r, 300));
@@ -124,7 +169,9 @@ export function UpdatePage({ onDone }: Props) {
     try {
       const os = process.platform === "darwin" ? "darwin" : "linux";
       const arch = process.arch === "arm64" ? "arm64" : "x64";
-      const url = `https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${os}-${arch}`;
+      const url = isNightly && resolvedTag
+        ? `https://github.com/${GITHUB_REPO}/releases/download/${resolvedTag}/npdev-${os}-${arch}`
+        : `https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${os}-${arch}`;
       const resp = await fetch(url, { redirect: "follow" });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -167,7 +214,7 @@ export function UpdatePage({ onDone }: Props) {
       progress: 1,
       message: `Updated to v${newVersion}`,
     }));
-  }, []);
+  }, [isNightly, nightlyTag]);
 
   // Start update on mount
   useEffect(() => {
@@ -198,17 +245,25 @@ export function UpdatePage({ onDone }: Props) {
     state.step === "done" || state.step === "error" ? "binary" : state.step,
   );
 
+  const title = state.step === "done"
+    ? "UPDATE COMPLETE"
+    : state.step === "error"
+      ? "UPDATE FAILED"
+      : isNightly ? "UPDATING TO NIGHTLY" : "UPDATING TO STABLE";
+
+  const borderColor = state.step === "error"
+    ? theme.red
+    : state.step === "done"
+      ? theme.green
+      : isNightly ? theme.lavender : theme.accent;
+
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
       <Box flexGrow={1} />
 
       <Box flexDirection="column" alignItems="center">
         <Text color={theme.overlay0} dimColor>
-          {state.step === "done"
-            ? "UPDATE COMPLETE"
-            : state.step === "error"
-              ? "UPDATE FAILED"
-              : "UPDATING"}
+          {title}
         </Text>
         <Text> </Text>
 
@@ -218,9 +273,7 @@ export function UpdatePage({ onDone }: Props) {
           width={Math.min(50, cols - 4)}
           backgroundColor={theme.panelBg}
           borderStyle="round"
-          borderColor={
-            state.step === "error" ? theme.red : state.step === "done" ? theme.green : theme.accent
-          }
+          borderColor={borderColor}
           paddingX={2}
           paddingY={1}
         >
@@ -232,7 +285,7 @@ export function UpdatePage({ onDone }: Props) {
               return (
                 <Text
                   key={s.key}
-                  color={isDone ? theme.green : isCurrent ? theme.accent : theme.overlay0}
+                  color={isDone ? theme.green : isCurrent ? (isNightly ? theme.lavender : theme.accent) : theme.overlay0}
                 >
                   {isDone ? "✓" : isCurrent ? spinner : "○"}{" "}
                   <Text color={isDone ? theme.green : isCurrent ? theme.text : theme.overlay0}>
@@ -250,7 +303,7 @@ export function UpdatePage({ onDone }: Props) {
             <ProgressBar
               progress={state.progress}
               width={barWidth}
-              color={theme.accent}
+              color={isNightly ? theme.lavender : theme.accent}
               trackColor={theme.surface0}
             />
           )}

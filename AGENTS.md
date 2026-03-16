@@ -136,6 +136,27 @@ ThemeProvider (render.ts)
 - Server-only changes (files outside `client/interactive/src/`) don't trigger a release
 - Users get updates via `npdev update`
 
+### Nightly Releases
+
+Nightly releases are GitHub pre-releases triggered manually via `workflow_dispatch`.
+
+**To publish a nightly release:**
+```bash
+gh workflow run nightly.yml --repo kapitolph/npdev
+```
+
+**How it works:**
+- Reads current version from `version.ts`, appends `-nightly.YYYYMMDD`
+- Builds 3 binaries with the nightly version baked in
+- Creates a GitHub pre-release (tag: `v1.1.36-nightly.20260316`)
+- Does NOT commit any version changes (nightly tags are ephemeral)
+
+**Key differences from stable releases:**
+- `prerelease: true` — invisible to `/releases/latest` API
+- `make_latest: false` — does not affect stable update path
+- No version bump committed to `version.ts`
+- Users opt in via `npdev update --nightly`; `npdev update` (no flag) always returns to stable
+
 ## VPS Toolchain
 
 Installed by `server/setup.sh` on the shared `dev` user:
@@ -174,7 +195,8 @@ The `npdev` CLI currently only creates `shell` sessions. `claude` and `codex` ty
 | `npdev end <name>` | End a session |
 | `npdev setup` | Configure developer identity |
 | `npdev sync-keys` | Sync SSH keys from repo to VPS |
-| `npdev update` | Update binary + machines from GitHub |
+| `npdev update` | Update binary + machines from GitHub (stable) |
+| `npdev update --nightly` | Install latest nightly pre-release |
 | `--machine <name>` | Select VPS (when multiple configured) |
 | `--user <name>` | Override developer identity |
 

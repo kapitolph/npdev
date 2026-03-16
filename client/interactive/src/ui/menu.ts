@@ -29,9 +29,14 @@ export async function mainMenu(
       .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
 
     // Header
+    const nightlyOnlyUpdate = !version.latest && version.latestNightly && version.channel !== "nightly";
     const updateNotice = version.latest
       ? chalk.yellow(` · update available: v${version.latest}`)
-      : "";
+      : nightlyOnlyUpdate
+        ? chalk.hex("#b4befe")(` · nightly available: v${version.latestNightly!.version}`)
+        : version.channel === "nightly"
+          ? chalk.hex("#b4befe")(" · nightly")
+          : "";
     console.log();
     console.log(
       chalk.bold(`  ${machine.name}`) +
@@ -140,11 +145,12 @@ export async function mainMenu(
     }
     options.push({ value: "setup", label: "Setup", hint: "configure developer identity" });
 
-    const hasUpdate = version.latest && version.latest !== version.current;
+    const hasStableUpdate = version.latest && version.latest !== version.current;
+    const hasNightlyOnly = !hasStableUpdate && version.latestNightly && version.channel !== "nightly";
     options.push({
       value: "update",
-      label: hasUpdate ? "Update (new version!)" : "Update",
-      hint: hasUpdate ? `v${version.latest} available` : "fetch latest npdev + machines",
+      label: hasStableUpdate ? "Update (new version!)" : hasNightlyOnly ? "Update (nightly available)" : "Update",
+      hint: hasStableUpdate ? `v${version.latest} available` : hasNightlyOnly ? `nightly v${version.latestNightly!.version}` : "fetch latest npdev + machines",
     });
     options.push({ value: "exit", label: "Exit" });
 
@@ -197,7 +203,7 @@ export async function mainMenu(
         await cmdSetup(machineOverride);
         break;
       case "update":
-        await cmdUpdate();
+        await cmdUpdate();  // always stable in legacy menu
         break;
     }
   }

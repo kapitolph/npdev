@@ -70,7 +70,7 @@ Summaries:
 Setup & Maintenance:
   npdev setup                     Set up developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
-  npdev update                    Update npdev binary + machine list
+  npdev update [--nightly]        Update npdev binary + machine list
   npdev spec --json               Show agent-facing CLI contract
   npdev spec command <path> --json
                                   Show one command contract
@@ -83,6 +83,7 @@ Global Flags:
   --old                           Use classic menu (fallback)
   --id <summary-id>               Summary id for "summaries get"
   --window 3h|daily               Window for "summaries generate"
+  --nightly                       Install latest nightly pre-release
   --version, -v                   Show version
   --help, -h                      Show this help
 
@@ -180,9 +181,12 @@ Interactive setup for developer identity. Configures:
 Fetch SSH public keys from the GitHub repo and add any new ones
 to ~/.ssh/authorized_keys on the VPS.`,
 
-  update: `npdev update
+  update: `npdev update [--nightly]
 
-Update the npdev binary and machines.yaml from the latest GitHub release.`,
+Update the npdev binary and machines.yaml from the latest GitHub release.
+
+Flags:
+  --nightly    Install the latest nightly pre-release instead of stable`,
 
   summaries: `npdev summaries <list|latest|get|generate> [flags]
 
@@ -212,6 +216,7 @@ interface ParsedArgs {
     machine?: string;
     user?: string;
     old: boolean;
+    nightly: boolean;
     desc?: string;
     repo?: string;
     id?: string;
@@ -228,6 +233,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let window: string | undefined;
   let json = false;
   let old = false;
+  let nightly = false;
   const remaining: string[] = [];
 
   let i = 0;
@@ -263,6 +269,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       case "--old":
         old = true;
         break;
+      case "--nightly":
+        nightly = true;
+        break;
       case "--version":
       case "-v":
         console.log(`npdev ${NPDEV_VERSION}`);
@@ -289,7 +298,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     command: remaining[0] || "",
     remaining: remaining.slice(1),
-    flags: { json, machine, user, old, desc, repo, id, window },
+    flags: { json, machine, user, old, nightly, desc, repo, id, window },
   };
 }
 
@@ -369,7 +378,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   if (command === "update") {
-    await cmdUpdate();
+    await cmdUpdate({ nightly: flags.nightly });
     process.exit(0);
   }
   if (command === "setup") {
@@ -398,7 +407,9 @@ async function main(): Promise<void> {
   }
 
   // Version check (non-blocking, skip for JSON/non-interactive)
-  const versionPromise = flags.json ? Promise.resolve({ current: NPDEV_VERSION, latest: null }) : checkVersion();
+  const versionPromise = flags.json
+    ? Promise.resolve({ current: NPDEV_VERSION, latest: null, latestStable: null, latestNightly: null, channel: "stable" as const })
+    : checkVersion();
 
   // Select machine (skip on VPS)
   const getMachine = async (): Promise<Machine> => {

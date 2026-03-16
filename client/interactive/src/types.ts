@@ -35,9 +35,17 @@ export interface CommitData {
   subject: string;
 }
 
+export interface ReleaseInfo {
+  version: string;       // "1.1.37" or "1.1.36-nightly.20260316"
+  publishedAt: string;   // ISO 8601 from GitHub API
+}
+
 export interface VersionInfo {
   current: string;
-  latest: string | null;
+  latest: string | null;              // backward compat (latest stable version string or null)
+  latestStable: ReleaseInfo | null;   // latest stable release info
+  latestNightly: ReleaseInfo | null;  // latest nightly release info (null if none exist)
+  channel: "stable" | "nightly";     // derived from NPDEV_VERSION
 }
 
 export interface SummaryJsonlRecord {

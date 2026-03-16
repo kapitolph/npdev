@@ -21,6 +21,7 @@ import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
 import { TabBar } from "./components/TabBar";
 import { TeamSection } from "./components/TeamSection";
+import { UpdateChannelPage } from "./components/UpdateChannelPage";
 import { UpdatePage } from "./components/UpdatePage";
 import { useTheme } from "./context/ThemeContext";
 import { useRepos } from "./hooks/useRepos";
@@ -32,7 +33,8 @@ type Route =
   | { page: "new-session" }
   | { page: "new-session-in-repo"; repoPath: string; repoName: string }
   | { page: "repo-detail"; repoPath: string; repoName: string }
-  | { page: "update" }
+  | { page: "update-select" }
+  | { page: "update"; channel: "stable" | "nightly" }
   | { page: "setup" }
   | { page: "upload" }
   | { page: "mosh-install" };
@@ -263,9 +265,33 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           {
             key: "u",
             label: "Update",
-            description: version.latest ? `New version available: v${version.latest}` : "Check for npdev updates",
-            action: () => setRoute({ page: "update" }),
-            highlight: !!version.latest,
+            description: version.latest
+              ? `New version available: v${version.latest}`
+              : version.latestNightly && version.channel !== "nightly"
+                ? `Nightly available: v${version.latestNightly.version}`
+                : "Check for npdev updates",
+            action: () => {
+              const hasStable = !!version.latest;
+              const hasNightly = !!version.latestNightly && version.channel !== "nightly";
+              const isOnNightly = version.channel === "nightly";
+
+              // If on nightly: always show channel selection (stable downgrade + any newer nightly)
+              if (isOnNightly) {
+                setRoute({ page: "update-select" });
+              } else if (hasStable && hasNightly) {
+                // Both channels have updates
+                setRoute({ page: "update-select" });
+              } else if (hasStable) {
+                setRoute({ page: "update", channel: "stable" });
+              } else if (hasNightly) {
+                setRoute({ page: "update", channel: "nightly" });
+              } else {
+                // No update, force re-check with stable
+                setRoute({ page: "update", channel: "stable" });
+              }
+            },
+            highlight: !!version.latest || (!!version.latestNightly && version.channel !== "nightly"),
+            highlightColor: !version.latest && !!version.latestNightly ? theme.lavender : undefined,
           },
         ]
       : []),
@@ -605,9 +631,28 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     );
   }
 
+  // --- Route: Update Channel Selection ---
+  if (route.page === "update-select") {
+    return (
+      <UpdateChannelPage
+        latestStable={version.latestStable}
+        latestNightly={version.latestNightly}
+        currentChannel={version.channel}
+        onSelect={(ch) => setRoute({ page: "update", channel: ch })}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
   // --- Route: Update ---
   if (route.page === "update") {
-    return <UpdatePage onDone={() => onAction({ type: "update-done" })} />;
+    return (
+      <UpdatePage
+        channel={route.channel}
+        nightlyTag={route.channel === "nightly" && version.latestNightly ? `v${version.latestNightly.version}` : undefined}
+        onDone={() => onAction({ type: "update-done" })}
+      />
+    );
   }
 
   // --- Route: Setup ---

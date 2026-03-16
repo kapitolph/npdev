@@ -1,0 +1,96 @@
+name: Nightly Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: client/interactive
+        run: bun install --frozen-lockfile
+
+      - name: Compute nightly version and tag
+        id: nightly
+        working-directory: client/interactive
+        run: |
+          VERSION_FILE="src/lib/version.ts"
+          CURRENT=$(grep 'NPDEV_VERSION' "$VERSION_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          DATE=$(date +%Y%m%d)
+          NIGHTLY_VERSION="${CURRENT}-nightly.${DATE}"
+          TAG="v${NIGHTLY_VERSION}"
+          echo "version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: $NIGHTLY_VERSION (tag: $TAG)"
+
+      - name: Delete existing same-day release/tag if present
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.nightly.outputs.tag }}"
+          # Delete the release if it exists
+          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          # Delete the tag if it exists
+          git push --delete origin "$TAG" 2>/dev/null || true
+
+      - name: Bake nightly version into binary (temporary, not committed)
+        working-directory: client/interactive
+        run: |
+          VERSION_FILE="src/lib/version.ts"
+          CURRENT=$(grep 'NPDEV_VERSION' "$VERSION_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          NIGHTLY="${{ steps.nightly.outputs.version }}"
+          sed -i "s/NPDEV_VERSION = \"${CURRENT}\"/NPDEV_VERSION = \"${NIGHTLY}\"/" "$VERSION_FILE"
+          echo "Baked version: $(grep NPDEV_VERSION "$VERSION_FILE")"
+
+      - name: Build binaries
+        working-directory: client/interactive
+        run: |
+          mkdir -p dist
+          bun build src/index.ts --compile --target=bun-linux-x64 --outfile dist/npdev-linux-x64
+          bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/npdev-darwin-arm64
+          bun build src/index.ts --compile --target=bun-darwin-x64 --outfile dist/npdev-darwin-x64
+
+      - name: Create nightly pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.nightly.outputs.tag }}
+          name: npdev ${{ steps.nightly.outputs.tag }}
+          body: |
+            ## npdev ${{ steps.nightly.outputs.tag }}
+
+            Nightly pre-release build. **Not recommended for production use.**
+
+            ### Install
+            ```bash
+            npdev update --nightly
+            ```
+
+            To return to stable:
+            ```bash
+            npdev update
+            ```
+
+            ### Binaries
+            | Platform | File |
+            |----------|------|
+            | Linux x64 | `npdev-linux-x64` |
+            | macOS Apple Silicon | `npdev-darwin-arm64` |
+            | macOS Intel | `npdev-darwin-x64` |
+          prerelease: true
+          make_latest: false
+          files: |
+            client/interactive/dist/npdev-linux-x64
+            client/interactive/dist/npdev-darwin-arm64
+            client/interactive/dist/npdev-darwin-x64
