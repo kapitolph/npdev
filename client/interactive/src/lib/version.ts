@@ -71,7 +71,8 @@ export async function checkVersion(): Promise<VersionInfo> {
       }
     }
 
-    // Parse nightly from releases list
+    // Parse nightly from releases list — only if its base version is
+    // strictly newer than the latest stable (same base = same code, no point)
     let latestNightly: ReleaseInfo | null = null;
     if (listResp?.ok) {
       const releases = (await listResp.json()) as Array<{
@@ -81,11 +82,16 @@ export async function checkVersion(): Promise<VersionInfo> {
       }>;
       for (const rel of releases) {
         if (rel.prerelease && rel.tag_name?.includes("-nightly.")) {
-          latestNightly = {
-            version: rel.tag_name.replace(/^v/, ""),
-            publishedAt: rel.published_at || "",
-          };
-          break; // first match is most recent
+          const nightlyVer = rel.tag_name.replace(/^v/, "");
+          const nightlyBase = baseVersion(nightlyVer);
+          const stableVer = latestStable?.version || "0.0.0";
+          if (isNewer(nightlyBase, stableVer)) {
+            latestNightly = {
+              version: nightlyVer,
+              publishedAt: rel.published_at || "",
+            };
+          }
+          break; // only check the most recent nightly
         }
       }
     }
