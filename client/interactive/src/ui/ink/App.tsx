@@ -15,6 +15,7 @@ import { RepoDetailPage } from "./components/RepoDetailPage";
 import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
 import { SetupPage } from "./components/SetupPage";
+import { UploadPage } from "./components/UploadPage";
 import { SkeletonLoader } from "./components/SkeletonLoader";
 import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
@@ -33,6 +34,7 @@ type Route =
   | { page: "repo-detail"; repoPath: string; repoName: string }
   | { page: "update" }
   | { page: "setup" }
+  | { page: "upload" }
   | { page: "mosh-install" };
 
 type DashboardMode =
@@ -231,6 +233,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         ]
       : []),
     { key: "r", label: "Refresh", description: "Reload sessions and repos", action: doRefresh },
+    { key: "f", label: "Upload", description: "Upload a file to a project on the VPS", action: () => setRoute({ page: "upload" }) },
     ...(!isOnVPS
       ? [
           {
@@ -613,6 +616,18 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       <SetupPage
         machine={machine}
         onDone={() => setRoute({ page: "dashboard" })}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
+  // --- Route: Upload ---
+  if (route.page === "upload") {
+    return (
+      <UploadPage
+        machine={machine}
+        repos={repos}
+        isOnVPS={isOnVPS}
         onBack={() => setRoute({ page: "dashboard" })}
       />
     );

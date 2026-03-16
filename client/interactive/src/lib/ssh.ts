@@ -59,6 +59,29 @@ export async function sshInteractive(
   return await proc.exited;
 }
 
+/** Upload a file to the VPS via scp (remote) or cp (on-VPS) */
+export async function scpUpload(
+  machine: Machine,
+  localPath: string,
+  remotePath: string,
+): Promise<{ exitCode: number; error?: string }> {
+  // Ensure destination directory exists
+  const remoteDir = remotePath.replace(/\/[^/]+$/, "");
+  await sshExec(machine, `mkdir -p '${remoteDir}'`);
+
+  const args = isOnVPS()
+    ? ["cp", localPath, remotePath]
+    : ["scp", ...SSH_OPTS, localPath, `${sshTarget(machine)}:${remotePath}`];
+
+  const proc = Bun.spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+  return { exitCode, error: exitCode !== 0 ? stderr.trim() || "Upload failed" : undefined };
+}
+
 function shellEscape(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
