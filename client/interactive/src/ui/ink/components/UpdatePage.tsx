@@ -1,4 +1,6 @@
 import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Box, Text, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import { MACHINES_FILE, npdevDir } from "../../../lib/config";
@@ -180,19 +182,28 @@ export function UpdatePage({ channel, nightlyTag, onDone }: Props) {
       const buffer = await resp.arrayBuffer();
       setState((s) => ({ ...s, progress: 0.7, message: "Installing..." }));
 
-      const execPath = process.execPath;
-      const tmpPath = `${execPath}.tmp`;
+      // Determine install target:
+      // When running via wrapper (NPDEV_EXEC_FILE set), always write to the
+      // canonical ~/.npdev/bin/npdev-core — process.execPath may differ on
+      // macOS due to Bun/symlink resolution quirks, causing the wrapper to
+      // keep launching the old binary.
+      const corePath = join(homedir(), ".npdev", "bin", "npdev-core");
+      const hasWrapper = !!process.env.NPDEV_EXEC_FILE;
+      const installPath = hasWrapper ? corePath : process.execPath;
+
+      await mkdir(join(homedir(), ".npdev", "bin"), { recursive: true });
+      const tmpPath = `${installPath}.tmp`;
       await writeFile(tmpPath, Buffer.from(buffer));
       await chmod(tmpPath, 0o755);
       try {
-        await unlink(execPath);
+        await unlink(installPath);
       } catch {}
-      await rename(tmpPath, execPath);
+      await rename(tmpPath, installPath);
 
       if (process.platform === "darwin") {
         const { execSync } = await import("node:child_process");
         try {
-          execSync(`codesign -s - "${execPath}"`, { stdio: "ignore" });
+          execSync(`codesign -s - "${installPath}"`, { stdio: "ignore" });
         } catch {}
       }
 
