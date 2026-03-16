@@ -13,23 +13,41 @@ interface Props {
   onBack: () => void;
 }
 
+type Phase = "select" | "confirm-nightly";
+
 export function UpdateChannelPage({ latestStable, latestNightly, currentChannel, onSelect, onBack }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
 
+  const hasStable = latestStable !== null;
+  const hasNightly = latestNightly !== null;
+
   type Channel = "stable" | "nightly";
-  const channels: Channel[] = [];
-  if (latestStable) channels.push("stable");
-  if (latestNightly) channels.push("nightly");
+  const channels: Channel[] = ["stable", "nightly"];
 
-  // Pre-select: prefer the channel that has an update, or first available
-  const initialIdx = currentChannel === "nightly" && channels.includes("stable")
-    ? channels.indexOf("stable")
-    : channels.includes("nightly") ? channels.indexOf("nightly") : 0;
+  // Pre-select: prefer stable if on nightly (downgrade), otherwise first available update
+  const initialIdx = currentChannel === "nightly" ? 0
+    : hasStable ? 0
+    : hasNightly ? 1
+    : 0;
 
-  const [cursor, setCursor] = useState(Math.max(0, initialIdx));
+  const [cursor, setCursor] = useState(initialIdx);
+  const [phase, setPhase] = useState<Phase>("select");
 
   useInput((input, key) => {
+    if (phase === "confirm-nightly") {
+      if (key.return || input === "y" || input === "Y") {
+        onSelect("nightly");
+        return;
+      }
+      if (key.escape || input === "n" || input === "N") {
+        setPhase("select");
+        return;
+      }
+      return;
+    }
+
+    // Phase: select
     if (key.escape) {
       onBack();
       return;
@@ -44,20 +62,54 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
     }
     if (key.return) {
       const selected = channels[cursor];
-      if (selected) onSelect(selected);
+      const isAvailable = selected === "stable" ? hasStable : hasNightly;
+      if (!isAvailable) return; // can't select grayed-out channel
+      if (selected === "nightly") {
+        setPhase("confirm-nightly");
+      } else {
+        onSelect(selected);
+      }
     }
   });
 
-  if (channels.length === 0) {
+  const panelWidth = Math.min(44, cols - 4);
+
+  // Nightly confirmation overlay
+  if (phase === "confirm-nightly") {
     return (
       <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
         <Box flexGrow={1} />
+
         <Box flexDirection="column" alignItems="center">
-          <Text color={theme.overlay0}>No updates available</Text>
+          <Text color={theme.yellow} bold>INSTALL NIGHTLY?</Text>
+          <Text> </Text>
+
+          <Box
+            flexDirection="column"
+            width={panelWidth}
+            backgroundColor={theme.panelBg}
+            borderStyle="round"
+            borderColor={theme.yellow}
+            paddingX={2}
+            paddingY={1}
+          >
+            <Text color={theme.text}>
+              Nightly builds may contain untested changes{"\n"}and could be unstable.
+            </Text>
+            <Text> </Text>
+            <Text color={theme.overlay1}>
+              You can always revert to stable with:
+            </Text>
+            <Text color={theme.green} bold>  npdev update</Text>
+          </Box>
         </Box>
+
         <Box flexGrow={1} />
+
         <Box paddingX={1}>
-          <Text color={theme.overlay0}>Press esc to go back</Text>
+          <Text color={theme.overlay0}>
+            {"↵/y confirm · esc/n cancel"}
+          </Text>
         </Box>
       </Box>
     );
@@ -73,7 +125,7 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
 
         <Box
           flexDirection="column"
-          width={Math.min(40, cols - 4)}
+          width={panelWidth}
           backgroundColor={theme.panelBg}
           borderStyle="round"
           borderColor={theme.accent}
@@ -83,20 +135,40 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
           {channels.map((ch, i) => {
             const isFocused = i === cursor;
             const info = ch === "stable" ? latestStable : latestNightly;
-            const color = ch === "stable" ? theme.green : theme.lavender;
+            const isAvailable = info !== null;
+            const accentColor = ch === "stable" ? theme.green : theme.lavender;
             const label = ch === "stable" ? "Stable" : "Nightly";
-            const ver = info?.version || "unknown";
-            const time = info?.publishedAt ? relativeTimeFromISO(info.publishedAt) : "";
-            // Truncate long nightly versions
-            const displayVer = ver.length > 20 ? `${ver.slice(0, 17)}..` : ver;
+
+            if (!isAvailable) {
+              // Grayed-out row — no update for this channel
+              return (
+                <Box key={ch} flexDirection="column" paddingBottom={i < channels.length - 1 ? 1 : 0}>
+                  <Box>
+                    <Text color={isFocused ? theme.surface2 : theme.surface1}>
+                      {isFocused ? "▸ " : "  "}
+                    </Text>
+                    <Text color={theme.surface2}>
+                      {label}
+                    </Text>
+                    <Text color={theme.surface2}>
+                      {"    "}No update available
+                    </Text>
+                  </Box>
+                </Box>
+              );
+            }
+
+            const ver = info.version;
+            const time = info.publishedAt ? relativeTimeFromISO(info.publishedAt) : "";
+            const displayVer = ver.length > 18 ? `${ver.slice(0, 15)}..` : ver;
 
             return (
               <Box key={ch} flexDirection="column" paddingBottom={i < channels.length - 1 ? 1 : 0}>
                 <Box>
-                  <Text color={isFocused ? color : theme.overlay0}>
+                  <Text color={isFocused ? accentColor : theme.overlay0}>
                     {isFocused ? "▸ " : "  "}
                   </Text>
-                  <Text color={isFocused ? color : theme.overlay1} bold={isFocused}>
+                  <Text color={isFocused ? accentColor : theme.overlay1} bold={isFocused}>
                     {label}
                   </Text>
                   <Text color={isFocused ? theme.text : theme.overlay0}>

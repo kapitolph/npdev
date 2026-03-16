@@ -270,26 +270,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
               : version.latestNightly && version.channel !== "nightly"
                 ? `Nightly available: v${version.latestNightly.version}`
                 : "Check for npdev updates",
-            action: () => {
-              const hasStable = !!version.latest;
-              const hasNightly = !!version.latestNightly && version.channel !== "nightly";
-              const isOnNightly = version.channel === "nightly";
-
-              // If on nightly: always show channel selection (stable downgrade + any newer nightly)
-              if (isOnNightly) {
-                setRoute({ page: "update-select" });
-              } else if (hasStable && hasNightly) {
-                // Both channels have updates
-                setRoute({ page: "update-select" });
-              } else if (hasStable) {
-                setRoute({ page: "update", channel: "stable" });
-              } else if (hasNightly) {
-                setRoute({ page: "update", channel: "nightly" });
-              } else {
-                // No update, force re-check with stable
-                setRoute({ page: "update", channel: "stable" });
-              }
-            },
+            action: () => setRoute({ page: "update-select" }),
             highlight: !!version.latest || (!!version.latestNightly && version.channel !== "nightly"),
             highlightColor: !version.latest && !!version.latestNightly ? theme.lavender : undefined,
           },
