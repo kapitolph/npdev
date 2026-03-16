@@ -1,17 +1,21 @@
-name: Build and Release npdev
+name: Release npdev
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'client/interactive/src/**'
-      - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options:
+          - stable
+          - nightly
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,19 +30,46 @@ jobs:
         working-directory: client/interactive
         run: bun install --frozen-lockfile
 
-      - name: Auto-increment patch version
+      - name: Compute version
+        id: version
         working-directory: client/interactive
         run: |
           VERSION_FILE="src/lib/version.ts"
           CURRENT=$(grep 'NPDEV_VERSION' "$VERSION_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
-          MINOR=$(echo "$CURRENT" | cut -d. -f2)
-          PATCH=$(echo "$CURRENT" | cut -d. -f3)
-          NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-          sed -i "s/NPDEV_VERSION = \"${CURRENT}\"/NPDEV_VERSION = \"${NEW_VERSION}\"/" "$VERSION_FILE"
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped version: $CURRENT → $NEW_VERSION"
-        id: version
+          CHANNEL="${{ inputs.channel }}"
+
+          if [ "$CHANNEL" = "nightly" ]; then
+            DATE=$(date +%Y%m%d)
+            VERSION="${CURRENT}-nightly.${DATE}"
+            TAG="v${VERSION}"
+            # Bake nightly version into source (not committed)
+            sed -i "s/NPDEV_VERSION = \"${CURRENT}\"/NPDEV_VERSION = \"${VERSION}\"/" "$VERSION_FILE"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Nightly version: $VERSION"
+          else
+            MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+            MINOR=$(echo "$CURRENT" | cut -d. -f2)
+            PATCH=$(echo "$CURRENT" | cut -d. -f3)
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            TAG="v${VERSION}"
+            # Bump version in source (will be committed)
+            sed -i "s/NPDEV_VERSION = \"${CURRENT}\"/NPDEV_VERSION = \"${VERSION}\"/" "$VERSION_FILE"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Stable version: $VERSION"
+          fi
+
+      - name: Delete existing same-day nightly if present
+        if: inputs.channel == 'nightly'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          gh release delete "$TAG" --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+          git push --delete origin "$TAG" 2>/dev/null || true
 
       - name: Build binaries
         working-directory: client/interactive
@@ -49,6 +80,7 @@ jobs:
           bun build src/index.ts --compile --target=bun-darwin-x64 --outfile dist/npdev-darwin-x64
 
       - name: Commit version bump
+        if: inputs.channel == 'stable'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -57,25 +89,29 @@ jobs:
           git commit -m "chore: bump version to v${{ steps.version.outputs.version }} [skip ci]"
           git push
 
-      - name: Create or update release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: npdev v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: npdev ${{ steps.version.outputs.tag }}
           body: |
-            ## npdev v${{ steps.version.outputs.version }}
+            ## npdev ${{ steps.version.outputs.tag }}
 
-            Compiled Bun binaries for the interactive npdev CLI.
+            ${{ inputs.channel == 'nightly' && 'Nightly pre-release build. **Not recommended for production use.**' || 'Compiled Bun binaries for the interactive npdev CLI.' }}
 
             ### Install / Update
             ```bash
-            npdev update
+            ${{ inputs.channel == 'nightly' && 'npdev update --nightly' || 'npdev update' }}
             ```
-
+            ${{ inputs.channel == 'nightly' && '
+            To return to stable:
+            ```bash
+            npdev update
+            ```' || '
             Or fresh install:
             ```bash
             curl -fsSL https://raw.githubusercontent.com/kapitolph/npdev/main/client/setup.sh | bash
-            ```
+            ```' }}
 
             ### Binaries
             | Platform | File |
@@ -83,7 +119,8 @@ jobs:
             | Linux x64 | `npdev-linux-x64` |
             | macOS Apple Silicon | `npdev-darwin-arm64` |
             | macOS Intel | `npdev-darwin-x64` |
-          make_latest: true
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ inputs.channel == 'stable' }}
           files: |
             client/interactive/dist/npdev-linux-x64
             client/interactive/dist/npdev-darwin-arm64
