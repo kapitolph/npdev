@@ -53,25 +53,33 @@ export function RepoList({
           .filter(s => parseInt(s.client_count || "0", 10) > 0)
           .flatMap(s => (s.attached_users || s.owner || "").split(",").filter(Boolean));
         const uniqueUsers = [...new Set(activeUsers)];
+        const hasActive = uniqueUsers.length > 0;
 
         return (
           <Box
             key={repo.path}
             flexDirection="column"
             width={width - 2}
-            borderStyle="single"
-            borderColor={isSelected ? theme.accent : theme.surface2}
             backgroundColor={isSelected ? theme.highlight : undefined}
-            paddingX={1}
           >
-            <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
-              {repo.name}
-            </Text>
-            {uniqueUsers.length > 0 ? (
-              <Text color={theme.green}>{"\u25CF"} {uniqueUsers.join(", ")}</Text>
-            ) : (
-              <Text color={theme.overlay0}> </Text>
-            )}
+            <Box>
+              <Text color={isSelected ? theme.cursor : undefined}>
+                {isSelected ? "▸" : " "}
+              </Text>
+              <Text> </Text>
+              <Text color={hasActive ? theme.green : theme.overlay1}>
+                {hasActive ? "●" : "○"}
+              </Text>
+              <Text> </Text>
+              <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
+                {repo.name}
+              </Text>
+            </Box>
+            <Box paddingLeft={4}>
+              <Text color={theme.overlay0} wrap="truncate">
+                {hasActive ? uniqueUsers.join(", ") : repo.branch || ""}
+              </Text>
+            </Box>
           </Box>
         );
       })}
