@@ -7,6 +7,7 @@ import { sshExec } from "../../lib/ssh";
 import type { Machine, RepoData, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
+import { DiaryColumn, getDiaryLineCount } from "./components/DiaryColumn";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { MoshInstallPage } from "./components/MoshInstallPage";
@@ -24,6 +25,7 @@ import { TeamSection } from "./components/TeamSection";
 import { UpdateChannelPage } from "./components/UpdateChannelPage";
 import { UpdatePage } from "./components/UpdatePage";
 import { useTheme } from "./context/ThemeContext";
+import { useDiary } from "./hooks/useDiary";
 import { useRepos } from "./hooks/useRepos";
 import { useSessions } from "./hooks/useSessions";
 import { useTerminalSize } from "./hooks/useTerminalSize";
@@ -54,11 +56,12 @@ export type AppAction =
   | { type: "update-done" }
   | { type: "exit" };
 
-type FocusColumn = "sessions" | "repos" | "team";
+type FocusColumn = "sessions" | "diary" | "repos" | "team";
 
 /** Map column IDs to their display labels for peek slivers */
 const COLUMN_LABELS: Record<FocusColumn, string> = {
   sessions: "Sessions",
+  diary: "Diary",
   repos: "Repos",
   team: "Team",
 };
@@ -75,6 +78,7 @@ interface Props {
 export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, onAction }: Props) {
   const { sessions, mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
   const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos(machine);
+  const { diary, refresh: refreshDiary } = useDiary(machine);
   const { cols, rows } = useTerminalSize();
   const theme = useTheme();
 
@@ -89,6 +93,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   const [sessionScrollOffset, setSessionScrollOffset] = useState(0);
   const [repoScrollOffset, setRepoScrollOffset] = useState(0);
   const [teamScrollOffset, setTeamScrollOffset] = useState(0);
+  const [diaryScrollOffset, setDiaryScrollOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
   const [moshEnabled, setMoshEnabled] = useState(initialMoshEnabled);
