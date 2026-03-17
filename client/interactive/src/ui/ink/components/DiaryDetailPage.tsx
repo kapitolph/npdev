@@ -69,12 +69,11 @@ function buildEntryLines(entry: SummaryJsonlRecord, contentWidth: number): Secti
   const lines: SectionLine[] = [];
 
   const sections: { heading: string; content: string }[] = [
-    { heading: "Signals Observed", content: entry.signals },
-    { heading: "What my collaborators changed", content: entry.collaborators },
-    { heading: "What this changed in my capabilities", content: entry.capabilities },
-    { heading: "My current state", content: entry.state },
-    { heading: "Why this matters for my development", content: entry.significance },
-    { heading: "Questions that emerge", content: entry.questions },
+    { heading: "What happened", content: entry.happened },
+    { heading: "What changed in me", content: entry.changed },
+    { heading: "Where I am now", content: entry.state },
+    { heading: "Where this leads", content: entry.leads },
+    { heading: "Open threads", content: entry.threads },
   ];
 
   for (const section of sections) {

@@ -51,10 +51,9 @@ export interface VersionInfo {
 export interface SummaryJsonlRecord {
   timestamp: string;
   label: string;
-  signals: string;
-  collaborators: string;
-  capabilities: string;
+  happened: string;
+  changed: string;
   state: string;
-  significance: string;
-  questions: string;
+  leads: string;
+  threads: string;
 }

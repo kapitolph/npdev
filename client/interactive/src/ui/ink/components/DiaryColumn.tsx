@@ -97,9 +97,9 @@ function DiaryBox({
   previewLines.push({ text: formatTimestamp(entry.timestamp), color: theme.lavender, bold: true });
   previewLines.push({ text: "", color: theme.text });
 
-  // Signals section (truncated to fit)
-  previewLines.push({ text: "Signals", color: theme.lavender, bold: true });
-  for (const l of wrapText(entry.signals, contentWidth)) {
+  // What happened section (truncated to fit)
+  previewLines.push({ text: "What happened", color: theme.lavender, bold: true });
+  for (const l of wrapText(entry.happened, contentWidth)) {
     previewLines.push({ text: l, color: theme.subtext0 });
   }
 
