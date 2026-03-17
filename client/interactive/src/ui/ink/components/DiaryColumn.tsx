@@ -7,17 +7,11 @@ interface Props {
   latestEod: SummaryJsonlRecord | null;
   focused: boolean;
   width: number;
-  scrollOffset: number;
+  diaryCursor: number;
   maxVisible: number;
 }
 
-interface DiaryLine {
-  type: "heading" | "subheading" | "body" | "spacer" | "divider";
-  text: string;
-}
-
 function formatTimestamp(ts: string): string {
-  // "2026-03-17 08:26" → "Mar 17, 08:26"
   const [date, time] = ts.split(" ");
   if (!date || !time) return ts;
   const [, month, day] = date.split("-");
@@ -42,48 +36,93 @@ function wrapText(text: string, width: number): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
-function buildLines(
-  entry: SummaryJsonlRecord | null,
-  label: string,
-  contentWidth: number,
-): DiaryLine[] {
+/** Truncated preview of a diary entry inside a bordered box */
+function DiaryBox({
+  entry,
+  title,
+  active,
+  focused,
+  width,
+  maxLines,
+}: {
+  entry: SummaryJsonlRecord | null;
+  title: string;
+  active: boolean;
+  focused: boolean;
+  width: number;
+  maxLines: number;
+}) {
+  const theme = useTheme();
+  const contentWidth = Math.max(10, width - 6);
+
+  const borderColor = active && focused
+    ? theme.accent
+    : focused
+      ? theme.panelBorder
+      : theme.panelBorder;
+
   if (!entry) {
-    return [
-      { type: "heading", text: label },
-      { type: "body", text: "No entries yet" },
-      { type: "spacer", text: "" },
-    ];
+    return (
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor={borderColor}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <Box paddingBottom={0}>
+          <Text bold color={active && focused ? theme.accent : theme.overlay1}>{title}</Text>
+        </Box>
+        <Text color={theme.overlay0}>No entries yet</Text>
+      </Box>
+    );
   }
 
-  const lines: DiaryLine[] = [];
+  // Build preview lines
+  const previewLines: { text: string; color: string; bold?: boolean }[] = [];
 
-  // Section header with timestamp
-  lines.push({ type: "heading", text: label });
-  lines.push({ type: "subheading", text: formatTimestamp(entry.timestamp) });
-  lines.push({ type: "spacer", text: "" });
+  // Timestamp
+  previewLines.push({ text: formatTimestamp(entry.timestamp), color: theme.lavender, bold: true });
+  previewLines.push({ text: "", color: theme.text });
 
-  // Signals — what happened
-  lines.push({ type: "subheading", text: "Signals" });
+  // Signals section (truncated to fit)
+  previewLines.push({ text: "Signals", color: theme.lavender, bold: true });
   for (const l of wrapText(entry.signals, contentWidth)) {
-    lines.push({ type: "body", text: l });
+    previewLines.push({ text: l, color: theme.subtext0 });
   }
-  lines.push({ type: "spacer", text: "" });
 
-  // What collaborators changed
-  lines.push({ type: "subheading", text: "Collaborators" });
-  for (const l of wrapText(entry.collaborators, contentWidth)) {
-    lines.push({ type: "body", text: l });
-  }
-  lines.push({ type: "spacer", text: "" });
+  // Truncate to maxLines
+  const visible = previewLines.slice(0, maxLines);
+  const remaining = Math.max(0, previewLines.length - maxLines);
 
-  // Current state
-  lines.push({ type: "subheading", text: "State" });
-  for (const l of wrapText(entry.state, contentWidth)) {
-    lines.push({ type: "body", text: l });
-  }
-  lines.push({ type: "spacer", text: "" });
-
-  return lines;
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor={borderColor}
+      paddingLeft={1}
+      paddingRight={1}
+    >
+      <Box paddingBottom={0}>
+        <Text bold color={active && focused ? theme.accent : theme.overlay1}>{title}</Text>
+      </Box>
+      {visible.map((line, i) =>
+        line.text === "" ? (
+          <Text key={i}>{" "}</Text>
+        ) : (
+          <Text key={i} color={line.color} bold={line.bold} wrap="truncate">
+            {line.text}
+          </Text>
+        ),
+      )}
+      {remaining > 0 && (
+        <Text color={theme.overlay0}>{"\u2193"} {remaining} more</Text>
+      )}
+      {active && focused && (
+        <Text color={theme.overlay0} dimColor>Enter to view</Text>
+      )}
+    </Box>
+  );
 }
 
 export function DiaryColumn({
@@ -91,23 +130,14 @@ export function DiaryColumn({
   latestEod,
   focused,
   width,
-  scrollOffset,
+  diaryCursor,
   maxVisible,
 }: Props) {
   const theme = useTheme();
-  const contentWidth = Math.max(20, width - 6);
 
-  // Build all renderable lines
-  const allLines: DiaryLine[] = [
-    ...buildLines(latest3h, "Latest 3h Update", contentWidth),
-    { type: "divider", text: "" },
-    { type: "spacer", text: "" },
-    ...buildLines(latestEod, "End-of-Day Summary", contentWidth),
-  ];
-
-  const visibleLines = allLines.slice(scrollOffset, scrollOffset + maxVisible);
-  const aboveCount = scrollOffset;
-  const belowCount = Math.max(0, allLines.length - scrollOffset - maxVisible);
+  // Split available vertical space between the two boxes
+  // Reserve space for the column header (3 lines) and some padding
+  const boxLines = Math.max(4, Math.floor((maxVisible - 2) / 2));
 
   return (
     <Box
@@ -125,56 +155,27 @@ export function DiaryColumn({
       <Box paddingTop={1} paddingBottom={1}>
         <Text bold color={focused ? theme.accent : theme.overlay1}>Diary</Text>
       </Box>
-      {aboveCount > 0 && <Text color={theme.overlay1}> {"\u2191"} {aboveCount} more</Text>}
-      {visibleLines.map((line, i) => {
-        switch (line.type) {
-          case "heading":
-            return (
-              <Box key={`${scrollOffset + i}`} paddingBottom={0}>
-                <Text bold color={theme.text} underline>
-                  {line.text}
-                </Text>
-              </Box>
-            );
-          case "subheading":
-            return (
-              <Text key={`${scrollOffset + i}`} color={theme.lavender} bold>
-                {line.text}
-              </Text>
-            );
-          case "body":
-            return (
-              <Text key={`${scrollOffset + i}`} color={theme.subtext0} wrap="truncate">
-                {line.text}
-              </Text>
-            );
-          case "divider":
-            return (
-              <Text key={`${scrollOffset + i}`} color={theme.surface2}>
-                {"─".repeat(Math.min(contentWidth, 40))}
-              </Text>
-            );
-          case "spacer":
-            return <Text key={`${scrollOffset + i}`}>{" "}</Text>;
-        }
-      })}
-      {belowCount > 0 && <Text color={theme.overlay1}> {"\u2193"} {belowCount} more</Text>}
+      <DiaryBox
+        entry={latest3h}
+        title="Latest 3h Update"
+        active={diaryCursor === 0}
+        focused={focused}
+        width={width}
+        maxLines={boxLines}
+      />
+      <Box paddingTop={1}>
+        <DiaryBox
+          entry={latestEod}
+          title="End-of-Day Summary"
+          active={diaryCursor === 1}
+          focused={focused}
+          width={width}
+          maxLines={boxLines}
+        />
+      </Box>
     </Box>
   );
 }
 
-/** Returns total scrollable line count for the diary content */
-export function getDiaryLineCount(
-  latest3h: SummaryJsonlRecord | null,
-  latestEod: SummaryJsonlRecord | null,
-  width: number,
-): number {
-  const contentWidth = Math.max(20, width - 6);
-  const lines = [
-    ...buildLines(latest3h, "Latest 3h Update", contentWidth),
-    { type: "divider" as const, text: "" },
-    { type: "spacer" as const, text: "" },
-    ...buildLines(latestEod, "End-of-Day Summary", contentWidth),
-  ];
-  return lines.length;
-}
+/** The diary column has exactly 2 selectable items */
+export const DIARY_ITEM_COUNT = 2;

@@ -7,7 +7,8 @@ import { sshExec } from "../../lib/ssh";
 import type { Machine, RepoData, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
-import { DiaryColumn, getDiaryLineCount } from "./components/DiaryColumn";
+import { DiaryColumn, DIARY_ITEM_COUNT } from "./components/DiaryColumn";
+import { DiaryDetailPage } from "./components/DiaryDetailPage";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { MoshInstallPage } from "./components/MoshInstallPage";
@@ -40,7 +41,8 @@ type Route =
   | { page: "update"; channel: "stable" | "nightly" }
   | { page: "setup" }
   | { page: "upload" }
-  | { page: "mosh-install" };
+  | { page: "mosh-install" }
+  | { page: "diary-detail"; diaryType: "3h" | "eod" };
 
 type DashboardMode =
   | { mode: "normal" }
@@ -93,7 +95,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   const [sessionScrollOffset, setSessionScrollOffset] = useState(0);
   const [repoScrollOffset, setRepoScrollOffset] = useState(0);
   const [teamScrollOffset, setTeamScrollOffset] = useState(0);
-  const [diaryScrollOffset, setDiaryScrollOffset] = useState(0);
+  const [diaryCursor, setDiaryCursor] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
   const [moshEnabled, setMoshEnabled] = useState(initialMoshEnabled);
@@ -146,32 +148,29 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     if (idx >= 0) viewport.ensureVisible(idx);
   }, [focusColumn, availableColumns.length]);
 
-  // Diary line count for scroll bounds (computed from viewport width)
-  const diaryMaxLines = getDiaryLineCount(diary.latest3h, diary.latestEod, viewport.columnWidth || 38);
-
   // Current list / max items for current column
   const currentMaxItems = focusColumn === "sessions" ? filteredMine.length
-    : focusColumn === "diary" ? diaryMaxLines
+    : focusColumn === "diary" ? DIARY_ITEM_COUNT
     : focusColumn === "repos" ? repos.length
     : filteredTeam.length;
 
   const currentCursor = focusColumn === "sessions" ? sessionCursor
-    : focusColumn === "diary" ? diaryScrollOffset
+    : focusColumn === "diary" ? diaryCursor
     : focusColumn === "repos" ? repoCursor
     : teamCursor;
 
   const setCurrentCursor = focusColumn === "sessions" ? setSessionCursor
-    : focusColumn === "diary" ? setDiaryScrollOffset
+    : focusColumn === "diary" ? setDiaryCursor
     : focusColumn === "repos" ? setRepoCursor
     : setTeamCursor;
 
   const currentScrollOffset = focusColumn === "sessions" ? sessionScrollOffset
-    : focusColumn === "diary" ? diaryScrollOffset
+    : focusColumn === "diary" ? 0
     : focusColumn === "repos" ? repoScrollOffset
     : teamScrollOffset;
 
   const setCurrentScrollOffset = focusColumn === "sessions" ? setSessionScrollOffset
-    : focusColumn === "diary" ? setDiaryScrollOffset
+    : focusColumn === "diary" ? () => {}
     : focusColumn === "repos" ? setRepoScrollOffset
     : setTeamScrollOffset;
 
@@ -460,19 +459,23 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
     // Navigation in column area
     if (cursorArea === "sessions") {
-      // Diary column: line-by-line scrolling
+      // Diary column: cursor between 2 boxes
       if (focusColumn === "diary") {
         if (key.downArrow || input === "j") {
-          const maxScroll = Math.max(0, diaryMaxLines - maxVisible);
-          setDiaryScrollOffset((prev) => Math.min(prev + 1, maxScroll));
+          setDiaryCursor((prev) => Math.min(prev + 1, DIARY_ITEM_COUNT - 1));
           return;
         }
         if (key.upArrow || input === "k") {
-          if (diaryScrollOffset === 0) {
+          if (diaryCursor === 0) {
             setCursorArea("actions");
           } else {
-            setDiaryScrollOffset((prev) => Math.max(0, prev - 1));
+            setDiaryCursor((prev) => Math.max(0, prev - 1));
           }
+          return;
+        }
+        if (key.return) {
+          const diaryType = diaryCursor === 0 ? "3h" as const : "eod" as const;
+          setRoute({ page: "diary-detail", diaryType });
           return;
         }
       }
@@ -636,6 +639,19 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     );
   }
 
+  // --- Route: Diary Detail ---
+  if (route.page === "diary-detail") {
+    const initialEntry = route.diaryType === "3h" ? diary.latest3h : diary.latestEod;
+    return (
+      <DiaryDetailPage
+        machine={machine}
+        type={route.diaryType}
+        initialEntry={initialEntry}
+        onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
   // --- Route: Mosh Install ---
   if (route.page === "mosh-install") {
     return (
@@ -724,7 +740,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
             latestEod={diary.latestEod}
             focused={panelFocusedDiary}
             width={viewport.columnWidth}
-            scrollOffset={diaryScrollOffset}
+            diaryCursor={diaryCursor}
             maxVisible={maxVisible}
           />
         );
@@ -794,7 +810,8 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       else parts.push(`idle ${relativeTime(s.last_activity)}`);
       contextDescription = parts.join(" · ");
     } else if (focusColumn === "diary") {
-      contextDescription = "AI development diary · scroll with ↑↓";
+      const diaryLabel = diaryCursor === 0 ? "3h Update" : "End-of-Day Summary";
+      contextDescription = `${diaryLabel} · Enter to view full entry`;
     } else if (focusColumn === "repos" && repos.length > 0 && repoCursor < repos.length) {
       const repo = repos[repoCursor];
       const activeUsers = [...new Set(
