@@ -129,8 +129,10 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
   // Available columns in order — repos hidden during search
   const showRepos = hasRepos && !searchActive;
+  const hasDiary = diary.latest3h !== null || diary.latestEod !== null;
   const availableColumns: FocusColumn[] = [
     "sessions",
+    ...(hasDiary && !searchActive ? ["diary" as const] : []),
     ...(showRepos ? ["repos" as const] : []),
     ...(hasFilteredTeam ? ["team" as const] : []),
   ];
@@ -144,24 +146,32 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     if (idx >= 0) viewport.ensureVisible(idx);
   }, [focusColumn, availableColumns.length]);
 
+  // Diary line count for scroll bounds (computed from viewport width)
+  const diaryMaxLines = getDiaryLineCount(diary.latest3h, diary.latestEod, viewport.columnWidth || 38);
+
   // Current list / max items for current column
   const currentMaxItems = focusColumn === "sessions" ? filteredMine.length
+    : focusColumn === "diary" ? diaryMaxLines
     : focusColumn === "repos" ? repos.length
     : filteredTeam.length;
 
   const currentCursor = focusColumn === "sessions" ? sessionCursor
+    : focusColumn === "diary" ? diaryScrollOffset
     : focusColumn === "repos" ? repoCursor
     : teamCursor;
 
   const setCurrentCursor = focusColumn === "sessions" ? setSessionCursor
+    : focusColumn === "diary" ? setDiaryScrollOffset
     : focusColumn === "repos" ? setRepoCursor
     : setTeamCursor;
 
   const currentScrollOffset = focusColumn === "sessions" ? sessionScrollOffset
+    : focusColumn === "diary" ? diaryScrollOffset
     : focusColumn === "repos" ? repoScrollOffset
     : teamScrollOffset;
 
   const setCurrentScrollOffset = focusColumn === "sessions" ? setSessionScrollOffset
+    : focusColumn === "diary" ? setDiaryScrollOffset
     : focusColumn === "repos" ? setRepoScrollOffset
     : setTeamScrollOffset;
 
@@ -211,7 +221,8 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     setSelected(new Set());
     refresh();
     refreshRepos();
-  }, [refresh, refreshRepos]);
+    refreshDiary();
+  }, [refresh, refreshRepos, refreshDiary]);
 
   const endSession = useCallback(
     async (name: string) => {
@@ -449,12 +460,29 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
     // Navigation in column area
     if (cursorArea === "sessions") {
-      // Up/Down navigation
-      if (key.downArrow || input === "j") {
+      // Diary column: line-by-line scrolling
+      if (focusColumn === "diary") {
+        if (key.downArrow || input === "j") {
+          const maxScroll = Math.max(0, diaryMaxLines - maxVisible);
+          setDiaryScrollOffset((prev) => Math.min(prev + 1, maxScroll));
+          return;
+        }
+        if (key.upArrow || input === "k") {
+          if (diaryScrollOffset === 0) {
+            setCursorArea("actions");
+          } else {
+            setDiaryScrollOffset((prev) => Math.max(0, prev - 1));
+          }
+          return;
+        }
+      }
+
+      // Up/Down navigation for other columns
+      if (focusColumn !== "diary" && (key.downArrow || input === "j")) {
         moveCursor(1);
         return;
       }
-      if (key.upArrow || (input === "k" && focusColumn === "repos")) {
+      if (focusColumn !== "diary" && (key.upArrow || (input === "k" && focusColumn === "repos"))) {
         if (currentCursor === 0) {
           setCursorArea("actions");
         } else {
@@ -646,6 +674,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   }
 
   const panelFocusedSessions = cursorArea === "sessions" && focusColumn === "sessions";
+  const panelFocusedDiary = cursorArea === "sessions" && focusColumn === "diary";
   const panelFocusedRepos = cursorArea === "sessions" && focusColumn === "repos";
   const panelFocusedTeam = cursorArea === "sessions" && focusColumn === "team";
 
@@ -686,6 +715,18 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
               <EmptyState />
             </Box>
           )
+        );
+      case "diary":
+        return (
+          <DiaryColumn
+            key="diary"
+            latest3h={diary.latest3h}
+            latestEod={diary.latestEod}
+            focused={panelFocusedDiary}
+            width={viewport.columnWidth}
+            scrollOffset={diaryScrollOffset}
+            maxVisible={maxVisible}
+          />
         );
       case "repos":
         return (
@@ -752,6 +793,8 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       if (isActive && attached.length > 0) parts.push(`${attached.join(", ")} online`);
       else parts.push(`idle ${relativeTime(s.last_activity)}`);
       contextDescription = parts.join(" · ");
+    } else if (focusColumn === "diary") {
+      contextDescription = "AI development diary · scroll with ↑↓";
     } else if (focusColumn === "repos" && repos.length > 0 && repoCursor < repos.length) {
       const repo = repos[repoCursor];
       const activeUsers = [...new Set(
