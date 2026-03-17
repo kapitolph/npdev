@@ -217,6 +217,7 @@ interface ParsedArgs {
     user?: string;
     old: boolean;
     nightly: boolean;
+    target?: string;
     desc?: string;
     repo?: string;
     id?: string;
@@ -234,6 +235,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let json = false;
   let old = false;
   let nightly = false;
+  let target: string | undefined;
   const remaining: string[] = [];
 
   let i = 0;
@@ -272,6 +274,10 @@ function parseArgs(argv: string[]): ParsedArgs {
       case "--nightly":
         nightly = true;
         break;
+      case "--target":
+        target = argv[++i];
+        if (!target) throw usageError("--target requires a version (e.g. 1.1.39)");
+        break;
       case "--version":
       case "-v":
         console.log(`npdev ${NPDEV_VERSION}`);
@@ -298,7 +304,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     command: remaining[0] || "",
     remaining: remaining.slice(1),
-    flags: { json, machine, user, old, nightly, desc, repo, id, window },
+    flags: { json, machine, user, old, nightly, target, desc, repo, id, window },
   };
 }
 
@@ -378,7 +384,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   if (command === "update") {
-    await cmdUpdate({ nightly: flags.nightly });
+    await cmdUpdate({ nightly: flags.nightly, target: flags.target });
     process.exit(0);
   }
   if (command === "setup") {

@@ -24,6 +24,7 @@ exit $exit_code
 
 interface UpdateOptions {
   nightly?: boolean;
+  target?: string;
 }
 
 async function findLatestNightlyTag(): Promise<string | null> {
@@ -50,7 +51,14 @@ async function findLatestNightlyTag(): Promise<string | null> {
 
 export async function cmdUpdate(options: UpdateOptions = {}): Promise<void> {
   const isNightly = options.nightly ?? false;
-  p.intro(isNightly ? "Updating npdev (nightly)" : "Updating npdev");
+  const targetVersion = options.target;
+
+  const label = targetVersion
+    ? `Updating npdev to v${targetVersion}`
+    : isNightly
+      ? "Updating npdev (nightly)"
+      : "Updating npdev";
+  p.intro(label);
 
   const s = p.spinner();
 
@@ -72,7 +80,28 @@ export async function cmdUpdate(options: UpdateOptions = {}): Promise<void> {
   let newVersion = "unknown";
   let downloadTag: string | null = null;
 
-  if (isNightly) {
+  if (targetVersion) {
+    // Specific version requested — normalize to tag format
+    downloadTag = targetVersion.startsWith("v") ? targetVersion : `v${targetVersion}`;
+    newVersion = targetVersion.replace(/^v/, "");
+
+    // Verify the release exists
+    s.start(`Verifying release ${downloadTag}`);
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${downloadTag}`,
+        { signal: AbortSignal.timeout(3000), headers: { Accept: "application/vnd.github+json" } },
+      );
+      if (!resp.ok) {
+        s.stop(`Release ${downloadTag} not found`);
+        process.exit(1);
+      }
+      s.stop(`Found release ${downloadTag}`);
+    } catch {
+      s.stop(`Failed to verify release ${downloadTag}`);
+      process.exit(1);
+    }
+  } else if (isNightly) {
     s.start("Finding latest nightly release");
     const tag = await findLatestNightlyTag();
     if (!tag) {
@@ -99,13 +128,14 @@ export async function cmdUpdate(options: UpdateOptions = {}): Promise<void> {
   }
 
   // Update binary → ~/.npdev/bin/npdev-core
-  s.start(`Fetching ${isNightly ? "nightly" : "latest"} npdev binary`);
+  const fetchLabel = targetVersion ? `v${newVersion}` : isNightly ? "nightly" : "latest";
+  s.start(`Fetching ${fetchLabel} npdev binary`);
   const coreBinDir = join(homedir(), ".npdev", "bin");
   const corePath = join(coreBinDir, "npdev-core");
   try {
     const os = process.platform === "darwin" ? "darwin" : "linux";
     const arch = process.arch === "arm64" ? "arm64" : "x64";
-    const url = isNightly && downloadTag
+    const url = downloadTag
       ? `https://github.com/${GITHUB_REPO}/releases/download/${downloadTag}/npdev-${os}-${arch}`
       : `https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${os}-${arch}`;
     const resp = await fetch(url, { redirect: "follow" });
@@ -147,6 +177,6 @@ export async function cmdUpdate(options: UpdateOptions = {}): Promise<void> {
     s.stop("Failed to install wrapper script");
   }
 
-  const channelLabel = isNightly ? " (nightly)" : "";
+  const channelLabel = targetVersion ? " (pinned)" : isNightly ? " (nightly)" : "";
   p.outro(`npdev is now at v${newVersion}${channelLabel}`);
 }
