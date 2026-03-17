@@ -570,23 +570,23 @@ async function main(): Promise<void> {
     if (!subcommand) throw usageError("Usage: npdev summaries <list|latest|get|generate> [flags]");
     const machine = await getMachine();
     if (subcommand === "list") {
-      await cmdSummariesList(machine, { json: flags.json });
+      await cmdSummariesList(machine, { json: flags.json, repo: flags.repo });
       process.exit(0);
     }
     if (subcommand === "latest") {
-      await cmdSummariesLatest(machine, { json: flags.json });
+      await cmdSummariesLatest(machine, { json: flags.json, repo: flags.repo });
       process.exit(0);
     }
     if (subcommand === "get") {
       if (!flags.id) throw usageError("Usage: npdev summaries get --id <summary-id> [--json]");
-      await cmdSummariesGet(machine, flags.id, { json: flags.json });
+      await cmdSummariesGet(machine, flags.id, { json: flags.json, repo: flags.repo });
       process.exit(0);
     }
     if (subcommand === "generate") {
       if (flags.window !== "3h" && flags.window !== "daily") {
         throw usageError("Usage: npdev summaries generate --window 3h|daily [--json]");
       }
-      await cmdSummariesGenerate(machine, flags.window as SummaryWindow, { json: flags.json });
+      await cmdSummariesGenerate(machine, flags.window as SummaryWindow, { json: flags.json, repo: flags.repo });
       process.exit(0);
     }
     throw usageError(`Unknown summaries subcommand: ${subcommand}`, { subcommand });

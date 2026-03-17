@@ -1,6 +1,6 @@
 import { EXIT_CODES } from "./errors";
 
-export const JSON_CONTRACT_VERSION = "2026-03-16";
+export const JSON_CONTRACT_VERSION = "2026-03-17";
 
 export interface CommandSpec {
   path: string;
@@ -24,12 +24,28 @@ export interface CommandSpec {
 const EXIT_CODE_DETAILS = [
   { code: EXIT_CODES.ok, name: "ok", meaning: "Success." },
   { code: EXIT_CODES.internal, name: "internal", meaning: "Unexpected internal failure." },
-  { code: EXIT_CODES.usage, name: "usage", meaning: "Invalid arguments or unsupported combination." },
-  { code: EXIT_CODES.config, name: "config", meaning: "Missing local npdev configuration or identity." },
+  {
+    code: EXIT_CODES.usage,
+    name: "usage",
+    meaning: "Invalid arguments or unsupported combination.",
+  },
+  {
+    code: EXIT_CODES.config,
+    name: "config",
+    meaning: "Missing local npdev configuration or identity.",
+  },
   { code: EXIT_CODES.notFound, name: "not_found", meaning: "Requested resource was not found." },
-  { code: EXIT_CODES.noData, name: "no_data", meaning: "Operation completed but produced no new summary data." },
+  {
+    code: EXIT_CODES.noData,
+    name: "no_data",
+    meaning: "Operation completed but produced no new summary data.",
+  },
   { code: EXIT_CODES.remote, name: "remote", meaning: "Remote SSH/VPS command failed." },
-  { code: EXIT_CODES.invalidData, name: "invalid_data", meaning: "Remote data was malformed or unsupported." },
+  {
+    code: EXIT_CODES.invalidData,
+    name: "invalid_data",
+    meaning: "Remote data was malformed or unsupported.",
+  },
 ];
 
 export const COMMAND_SPECS: CommandSpec[] = [
@@ -101,48 +117,66 @@ export const COMMAND_SPECS: CommandSpec[] = [
   },
   {
     path: "summaries list",
-    summary: "List known generated diary summaries from 3h and daily windows.",
+    summary:
+      "List known generated diary summaries from 3h and daily windows. Use --repo to filter by repository.",
     interactive_safe: true,
     json: { supported: true, shape: "object" },
-    options: [{ name: "--json" }],
+    options: [{ name: "--json" }, { name: "--repo" }],
     exit_codes: [EXIT_CODES.ok, EXIT_CODES.remote, EXIT_CODES.invalidData],
-    examples: ["npdev summaries list --json"],
+    examples: ["npdev summaries list --json", "npdev summaries list --repo npdev --json"],
   },
   {
     path: "summaries latest",
-    summary: "Return the newest available generated diary summary.",
+    summary:
+      "Return the newest available generated diary summary. Use --repo to filter by repository.",
     interactive_safe: true,
     json: { supported: true, shape: "object" },
-    options: [{ name: "--json" }],
+    options: [{ name: "--json" }, { name: "--repo" }],
     exit_codes: [EXIT_CODES.ok, EXIT_CODES.notFound, EXIT_CODES.remote, EXIT_CODES.invalidData],
-    examples: ["npdev summaries latest --json"],
+    examples: ["npdev summaries latest --json", "npdev summaries latest --repo npdev --json"],
   },
   {
     path: "summaries get",
-    summary: "Return one generated diary summary by id.",
+    summary: "Return one generated diary summary by id. Use --repo to search per-repo summaries.",
     interactive_safe: true,
     json: { supported: true, shape: "object" },
-    options: [{ name: "--id", required: true }, { name: "--json" }],
-    exit_codes: [EXIT_CODES.ok, EXIT_CODES.notFound, EXIT_CODES.remote, EXIT_CODES.invalidData, EXIT_CODES.usage],
+    options: [{ name: "--id", required: true }, { name: "--json" }, { name: "--repo" }],
+    exit_codes: [
+      EXIT_CODES.ok,
+      EXIT_CODES.notFound,
+      EXIT_CODES.remote,
+      EXIT_CODES.invalidData,
+      EXIT_CODES.usage,
+    ],
     examples: ["npdev summaries get --id 3h-2026-03-15T06:55 --json"],
   },
   {
     path: "summaries generate",
-    summary: "Generate a new diary summary via the existing heartbeat diary script.",
+    summary:
+      "Generate a new diary summary. Use --repo to generate for a single repository only (skips synthesis).",
     interactive_safe: true,
     json: { supported: true, shape: "object" },
-    options: [{ name: "--window", values: ["3h", "daily"], required: true }, { name: "--json" }],
-    exit_codes: [EXIT_CODES.ok, EXIT_CODES.noData, EXIT_CODES.remote, EXIT_CODES.invalidData, EXIT_CODES.usage],
-    examples: ["npdev summaries generate --window 3h --json"],
+    options: [
+      { name: "--window", values: ["3h", "daily"], required: true },
+      { name: "--json" },
+      { name: "--repo" },
+    ],
+    exit_codes: [
+      EXIT_CODES.ok,
+      EXIT_CODES.noData,
+      EXIT_CODES.remote,
+      EXIT_CODES.invalidData,
+      EXIT_CODES.usage,
+    ],
+    examples: [
+      "npdev summaries generate --window 3h --json",
+      "npdev summaries generate --window 3h --repo npdev --json",
+    ],
   },
 ];
 
 export function normalizeCommandPath(path: string): string {
-  return path
-    .trim()
-    .toLowerCase()
-    .replace(/[/.]+/g, " ")
-    .replace(/\s+/g, " ");
+  return path.trim().toLowerCase().replace(/[/.]+/g, " ").replace(/\s+/g, " ");
 }
 
 export function findCommandSpec(path: string): CommandSpec | undefined {
@@ -176,6 +210,8 @@ export function buildCapabilitiesDocument(): Record<string, unknown> {
     interactive_dashboard_preserved: true,
     top_level_nouns: ["capabilities", "spec", "sessions", "repos", "repo", "status", "summaries"],
     summary_windows: ["3h", "daily"],
+    summary_repo_filter:
+      "Use --repo <name> on summaries commands to filter by repository. Per-repo summaries include a 'repo' field.",
     discoverability: {
       spec: "npdev spec --json",
       spec_command: "npdev spec command <path> --json",
