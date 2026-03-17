@@ -17,7 +17,7 @@ export function SkeletonLoader({ cols, rows }: Props) {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setTick(t => (t + 1) % (GRADIENT.length * 3));
+      setTick((t) => (t + 1) % (GRADIENT.length * 3));
     }, 120);
     return () => clearInterval(timer);
   }, []);
@@ -32,7 +32,9 @@ export function SkeletonLoader({ cols, rows }: Props) {
       const gradIdx = (i + tick + offset) % (GRADIENT.length * 3);
       const colorIdx = gradIdx < GRADIENT.length ? gradIdx : 0;
       chars.push(
-        <Text key={i} color={GRADIENT[colorIdx]}>{BLOCK}</Text>
+        <Text key={i} color={GRADIENT[colorIdx]}>
+          {BLOCK}
+        </Text>,
       );
     }
     return <Box>{chars}</Box>;

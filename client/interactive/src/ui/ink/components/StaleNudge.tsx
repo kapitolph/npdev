@@ -15,9 +15,13 @@ export function StaleNudge({ count }: Props) {
         {icons.warning} You have {count} stale session{count > 1 ? "s" : ""}
       </Text>
       <Text color={theme.overlay1}> — </Text>
-      <Text color={theme.accent} bold>c</Text>
+      <Text color={theme.accent} bold>
+        c
+      </Text>
       <Text color={theme.overlay1}> clean all · </Text>
-      <Text color={theme.accent} bold>space</Text>
+      <Text color={theme.accent} bold>
+        space
+      </Text>
       <Text color={theme.overlay1}> select</Text>
     </Box>
   );

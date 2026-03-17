@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const MIN_COL_WIDTH = 38;
 const PEEK_WIDTH = 5;
@@ -24,7 +24,7 @@ export function useViewport(cols: number, totalColumns: number): ViewportState {
   const availableWidth = Math.max(MIN_COL_WIDTH, cols - 4);
 
   // How many full columns fit without peeks?
-  let maxFull = Math.max(1, Math.floor(availableWidth / MIN_COL_WIDTH));
+  const maxFull = Math.max(1, Math.floor(availableWidth / MIN_COL_WIDTH));
   let visibleFullCount = Math.min(totalColumns, maxFull);
 
   // Clamp viewportStart

@@ -20,7 +20,14 @@ interface Props {
   searchResultCount?: number;
 }
 
-export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescription, searchQuery, searchResultCount }: Props) {
+export function ButtonBar({
+  buttons,
+  focusedIndex,
+  isFocusZone,
+  contextDescription,
+  searchQuery,
+  searchResultCount,
+}: Props) {
   const theme = useTheme();
   const isSearching = searchQuery != null;
   const focusedDesc = isFocusZone ? buttons[focusedIndex]?.description : contextDescription;
@@ -30,18 +37,17 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescripti
       <Box gap={1} flexWrap="wrap">
         {buttons.map((btn, i) => {
           const isFocused = i === focusedIndex && isFocusZone;
-          const tint = btn.active ? theme.green : btn.highlight ? (btn.highlightColor || theme.yellow) : undefined;
+          const tint = btn.active
+            ? theme.green
+            : btn.highlight
+              ? btn.highlightColor || theme.yellow
+              : undefined;
           const color = isFocused ? theme.accent : tint || theme.overlay0;
           const labelColor = isFocused ? theme.accent : tint || theme.subtext0;
           const borderColor = isFocused ? theme.accent : tint || theme.surface1;
 
           return (
-            <Box
-              key={btn.key}
-              borderStyle="round"
-              borderColor={borderColor}
-              paddingX={1}
-            >
+            <Box key={btn.key} borderStyle="round" borderColor={borderColor} paddingX={1}>
               <Text color={color}>{btn.key}</Text>
               <Text color={labelColor}> {btn.label}</Text>
             </Box>
@@ -55,7 +61,10 @@ export function ButtonBar({ buttons, focusedIndex, isFocusZone, contextDescripti
             <Text color={theme.text}>{searchQuery}</Text>
             <Text color={theme.accent}>▎</Text>
             {searchResultCount != null && (
-              <Text color={theme.overlay0}> — {searchResultCount} result{searchResultCount !== 1 ? "s" : ""}</Text>
+              <Text color={theme.overlay0}>
+                {" "}
+                — {searchResultCount} result{searchResultCount !== 1 ? "s" : ""}
+              </Text>
             )}
           </>
         ) : (

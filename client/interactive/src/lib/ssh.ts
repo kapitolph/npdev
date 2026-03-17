@@ -39,7 +39,7 @@ export async function sshInteractive(
     shellCmd = `exec mosh --ssh='${sshFlag}' ${target} -- bash -c ${shellEscape(command)}`;
   } else {
     const target = sshTarget(machine);
-    const optsStr = SSH_OPTS.map(o => `'${o}'`).join(" ");
+    const optsStr = SSH_OPTS.map((o) => `'${o}'`).join(" ");
     shellCmd = `exec ssh -t ${optsStr} ${target} ${shellEscape(command)}`;
   }
 

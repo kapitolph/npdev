@@ -14,7 +14,15 @@ interface Props {
   width: number;
 }
 
-export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabel, repoName, width }: Props) {
+export function SessionRow({
+  session,
+  isSelected,
+  isMarked,
+  showOwner,
+  ownerLabel,
+  repoName,
+  width,
+}: Props) {
   const theme = useTheme();
   const count = parseInt(session.client_count || "0", 10);
   const isStale = businessDaysElapsed(session.last_activity) > STALE_BUSINESS_DAYS;
@@ -29,11 +37,10 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
   const statusIcon = isActive ? icons.active : isStale ? icons.stale : icons.idle;
 
   const hasDescription =
-    session.description &&
-    session.description !== "(no description)" &&
-    !isActive;
+    session.description && session.description !== "(no description)" && !isActive;
 
-  const ownerIsAttached = isActive && (session.attached_users || "").split(",").includes(session.owner);
+  const ownerIsAttached =
+    isActive && (session.attached_users || "").split(",").includes(session.owner);
 
   return (
     <Box
@@ -43,7 +50,7 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
     >
       {/* Line 1 */}
       <Box>
-        <Text color={isMarked ? theme.green : (isSelected ? theme.cursor : undefined)}>
+        <Text color={isMarked ? theme.green : isSelected ? theme.cursor : undefined}>
           {isMarked ? "✓" : isSelected ? icons.cursor : " "}
         </Text>
         <Text> </Text>
@@ -59,25 +66,33 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
         <Text color={isStale ? theme.yellow : theme.overlay1}>
           {relativeTime(session.last_activity)}
         </Text>
-        {isActive && (() => {
-          const users = (session.attached_users || "").split(",").filter(Boolean);
-          return (
-            <>
-              <Text> {icons.attached} </Text>
-              {users.length > 0 ? users.map((u, i) => (
-                <Text key={u} color={u === session.owner ? theme.green : theme.lavender}>
-                  {i > 0 ? ", " : ""}{u}
-                </Text>
-              )) : <Text color={theme.green}>{String(count)}</Text>}
-            </>
-          );
-        })()}
+        {isActive &&
+          (() => {
+            const users = (session.attached_users || "").split(",").filter(Boolean);
+            return (
+              <>
+                <Text> {icons.attached} </Text>
+                {users.length > 0 ? (
+                  users.map((u, i) => (
+                    <Text key={u} color={u === session.owner ? theme.green : theme.lavender}>
+                      {i > 0 ? ", " : ""}
+                      {u}
+                    </Text>
+                  ))
+                ) : (
+                  <Text color={theme.green}>{String(count)}</Text>
+                )}
+              </>
+            );
+          })()}
       </Box>
       {/* Line 2: repo + description */}
       <Box paddingLeft={4}>
         <Text color={theme.overlay0} wrap="truncate">
           {repoName || "No project"}
-          {hasDescription ? ` ${icons.bullet} ${session.description.slice(0, Math.max(20, width - 8 - (repoName || "No project").length))}` : ""}
+          {hasDescription
+            ? ` ${icons.bullet} ${session.description.slice(0, Math.max(20, width - 8 - (repoName || "No project").length))}`
+            : ""}
         </Text>
       </Box>
     </Box>

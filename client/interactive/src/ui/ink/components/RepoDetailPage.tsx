@@ -2,11 +2,11 @@ import { Box, Spacer, Text, useInput } from "ink";
 import { useCallback, useEffect, useState } from "react";
 import { fetchRepoCommits, relativeTime } from "../../../lib/sessions";
 import type { CommitData, Machine, RepoData, SessionData } from "../../../types";
+import type { AppAction } from "../App";
 import { useTheme } from "../context/ThemeContext";
 import { useTerminalSize } from "../hooks/useTerminalSize";
 import { renderAsciiTextFit } from "../lib/asciiFont";
-import { icons, BRAND_BLUE } from "../theme";
-import type { AppAction } from "../App";
+import { BRAND_BLUE, icons } from "../theme";
 
 type DetailFocus = "sessions" | "commits";
 
@@ -27,12 +27,12 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
   const [focus, setFocus] = useState<DetailFocus>("sessions");
 
   // Filter sessions for this repo
-  const repoSessions = sessions.filter(s => s.pane_cwd && s.pane_cwd.startsWith(repo.path));
+  const repoSessions = sessions.filter((s) => s.pane_cwd && s.pane_cwd.startsWith(repo.path));
   const activeSessions = repoSessions
-    .filter(s => parseInt(s.client_count || "0", 10) > 0)
+    .filter((s) => parseInt(s.client_count || "0", 10) > 0)
     .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
   const inactiveSessions = repoSessions
-    .filter(s => parseInt(s.client_count || "0", 10) === 0)
+    .filter((s) => parseInt(s.client_count || "0", 10) === 0)
     .sort((a, b) => parseInt(b.last_activity, 10) - parseInt(a.last_activity, 10));
   const allSessions = [...activeSessions, ...inactiveSessions];
 
@@ -46,7 +46,7 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
   );
 
   useEffect(() => {
-    setSessionCursor(c => clampSession(c));
+    setSessionCursor((c) => clampSession(c));
   }, [clampSession]);
 
   useInput((input, key) => {
@@ -66,13 +66,13 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
     // Left/Right: switch focus between sessions and commits panels
     if (key.leftArrow || key.rightArrow) {
       if (allSessions.length > 0 && commits.length > 0) {
-        setFocus(f => f === "sessions" ? "commits" : "sessions");
+        setFocus((f) => (f === "sessions" ? "commits" : "sessions"));
       }
       return;
     }
     if (key.tab) {
       if (allSessions.length > 0 && commits.length > 0) {
-        setFocus(f => f === "sessions" ? "commits" : "sessions");
+        setFocus((f) => (f === "sessions" ? "commits" : "sessions"));
       }
       return;
     }
@@ -80,11 +80,11 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
     // Up/Down in sessions panel
     if (focus === "sessions" && allSessions.length > 0) {
       if (key.downArrow || input === "j") {
-        setSessionCursor(c => clampSession(c + 1));
+        setSessionCursor((c) => clampSession(c + 1));
         return;
       }
       if (key.upArrow || input === "k") {
-        setSessionCursor(c => clampSession(c - 1));
+        setSessionCursor((c) => clampSession(c - 1));
         return;
       }
       if (key.return && sessionCursor < allSessions.length) {
@@ -115,7 +115,9 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
       paddingLeft={1}
     >
       <Box paddingTop={1} paddingBottom={1}>
-        <Text bold color={focused ? theme.accent : theme.overlay1}>Sessions</Text>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>
+          Sessions
+        </Text>
         <Text color={theme.overlay0}> ({allSessions.length})</Text>
       </Box>
       {allSessions.length === 0 ? (
@@ -129,7 +131,11 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
                 const isSelected = focused && sessionCursor === i;
                 const users = (s.attached_users || "").split(",").filter(Boolean);
                 return (
-                  <Box key={s.name} flexDirection="column" backgroundColor={isSelected ? theme.highlight : undefined}>
+                  <Box
+                    key={s.name}
+                    flexDirection="column"
+                    backgroundColor={isSelected ? theme.highlight : undefined}
+                  >
                     <Box>
                       <Text color={isSelected ? theme.cursor : undefined}>
                         {isSelected ? icons.cursor : " "}
@@ -137,8 +143,15 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
                       <Text> </Text>
                       <Text color={theme.sessionActive}>{icons.active}</Text>
                       <Text> </Text>
-                      <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>{s.name}</Text>
-                      <Text color={s.attached_users?.includes(s.owner) ? theme.green : theme.overlay1}> {s.owner}</Text>
+                      <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
+                        {s.name}
+                      </Text>
+                      <Text
+                        color={s.attached_users?.includes(s.owner) ? theme.green : theme.overlay1}
+                      >
+                        {" "}
+                        {s.owner}
+                      </Text>
                       <Spacer />
                       <Text color={theme.overlay1}>{relativeTime(s.last_activity)}</Text>
                       {users.length > 0 && (
@@ -146,7 +159,8 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
                           <Text> {icons.attached} </Text>
                           {users.map((u, j) => (
                             <Text key={u} color={u === s.owner ? theme.green : theme.lavender}>
-                              {j > 0 ? ", " : ""}{u}
+                              {j > 0 ? ", " : ""}
+                              {u}
                             </Text>
                           ))}
                         </>
@@ -171,7 +185,9 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
                     <Text> </Text>
                     <Text color={theme.sessionIdle}>{icons.idle}</Text>
                     <Text> </Text>
-                    <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>{s.name}</Text>
+                    <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
+                      {s.name}
+                    </Text>
                     <Text color={theme.overlay1}> {s.owner}</Text>
                     <Spacer />
                     <Text color={theme.overlay1}>{relativeTime(s.last_activity)}</Text>
@@ -200,13 +216,15 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
       paddingLeft={1}
     >
       <Box paddingTop={1} paddingBottom={1}>
-        <Text bold color={focused ? theme.accent : theme.overlay1}>Recent Commits</Text>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>
+          Recent Commits
+        </Text>
         <Text color={theme.overlay0}> ({commits.length})</Text>
       </Box>
       {commits.length === 0 ? (
         <Text color={theme.overlay0}>No commits found</Text>
       ) : (
-        commits.slice(0, 12).map(c => (
+        commits.slice(0, 12).map((c) => (
           <Box key={c.hash}>
             <Text color={theme.yellow}>{c.hash}</Text>
             <Text color={theme.overlay1}> {c.author}</Text>
@@ -226,7 +244,9 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
       {/* ASCII art header */}
       <Box flexDirection="column" paddingX={2} paddingTop={1}>
         {asciiLines.map((line, i) => (
-          <Text key={i} color={theme.accent}>{line}</Text>
+          <Text key={i} color={theme.accent}>
+            {line}
+          </Text>
         ))}
       </Box>
 
@@ -234,7 +254,10 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
       <Box paddingX={2} paddingBottom={1}>
         <Text color={theme.overlay1}>branch: </Text>
         <Text color={theme.green}>{repo.branch}</Text>
-        <Text color={theme.overlay0}> {icons.bullet} {repo.path}</Text>
+        <Text color={theme.overlay0}>
+          {" "}
+          {icons.bullet} {repo.path}
+        </Text>
       </Box>
 
       {/* Two-column layout: Sessions | Commits */}
@@ -246,8 +269,7 @@ export function RepoDetailPage({ machine, repo, sessions, onAction, onBack, onNe
       {/* Footer */}
       <Box paddingX={1}>
         <Text color={theme.overlay0}>
-          <Text color={BRAND_BLUE}>n</Text> new session{" "}
-          <Text color={BRAND_BLUE}>o</Text> open shell{" "}
+          <Text color={BRAND_BLUE}>n</Text> new session <Text color={BRAND_BLUE}>o</Text> open shell{" "}
           <Text color={BRAND_BLUE}>{"\u21B5"}</Text> join{" "}
           <Text color={BRAND_BLUE}>{"\u2190\u2192"}</Text> panels{" "}
           <Text color={BRAND_BLUE}>esc</Text> back

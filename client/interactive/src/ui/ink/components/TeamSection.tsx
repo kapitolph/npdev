@@ -46,7 +46,9 @@ export function TeamSection({
       paddingLeft={1}
     >
       <Box paddingTop={1} paddingBottom={1}>
-        <Text bold color={focused ? theme.accent : theme.overlay1}>Team</Text>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>
+          Team
+        </Text>
         <Text color={theme.overlay0}> ({sessions.length})</Text>
       </Box>
       {aboveCount > 0 && <Text color={theme.overlay1}> ↑ {aboveCount} more</Text>}

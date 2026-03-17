@@ -50,12 +50,23 @@ export async function renderInkDashboard(
             resolve();
             break;
           case "new-session-in-repo":
-            await cmdStart(machine, action.sessionName, npdevUser, undefined, action.repoPath, moshOpts);
+            await cmdStart(
+              machine,
+              action.sessionName,
+              npdevUser,
+              undefined,
+              action.repoPath,
+              moshOpts,
+            );
             resolve();
             break;
           case "cd-to-repo": {
             const envCmd = `source ~/.vps/developers/${npdevUser}.env 2>/dev/null; `;
-            await sshInteractive(machine, `${envCmd}cd '${action.repoPath}' && exec $SHELL -l`, moshOpts);
+            await sshInteractive(
+              machine,
+              `${envCmd}cd '${action.repoPath}' && exec $SHELL -l`,
+              moshOpts,
+            );
             resolve();
             break;
           }

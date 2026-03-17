@@ -26,9 +26,12 @@ export async function selectMachine(
   }
 
   if (opts.interactive === false) {
-    throw usageError("Multiple machines configured. Pass --machine <name> for non-interactive use.", {
-      machines: machines.map((machine) => machine.name),
-    });
+    throw usageError(
+      "Multiple machines configured. Pass --machine <name> for non-interactive use.",
+      {
+        machines: machines.map((machine) => machine.name),
+      },
+    );
   }
 
   const choice = await p.select({

@@ -1,7 +1,10 @@
 import { activityAge, fetchSessions, relativeTime } from "../lib/sessions";
 import type { Machine, SessionData } from "../types";
 
-export async function cmdSessionsList(machine: Machine, opts: { json?: boolean } = {}): Promise<void> {
+export async function cmdSessionsList(
+  machine: Machine,
+  opts: { json?: boolean } = {},
+): Promise<void> {
   const sessions = await fetchSessions(machine);
 
   if (opts.json) {
@@ -18,8 +21,8 @@ export async function cmdSessionsList(machine: Machine, opts: { json?: boolean }
     (a, b) => (parseInt(b.last_activity, 10) || 0) - (parseInt(a.last_activity, 10) || 0),
   );
 
-  const maxName = Math.max(...sorted.map(s => s.name.length), 4);
-  const maxOwner = Math.max(...sorted.map(s => s.owner.length), 5);
+  const maxName = Math.max(...sorted.map((s) => s.name.length), 4);
+  const maxOwner = Math.max(...sorted.map((s) => s.owner.length), 5);
 
   console.log(
     `${"NAME".padEnd(maxName)}  ${"OWNER".padEnd(maxOwner)}  ${"STATUS".padEnd(8)}  ${"ACTIVITY".padEnd(12)}  ${"ATTACHED".padEnd(8)}  CWD`,

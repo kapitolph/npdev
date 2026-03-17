@@ -1,5 +1,5 @@
-import { sshInteractive } from "../lib/ssh";
 import { usageError } from "../lib/errors";
+import { sshInteractive } from "../lib/ssh";
 import type { Machine } from "../types";
 
 export async function cmdStart(

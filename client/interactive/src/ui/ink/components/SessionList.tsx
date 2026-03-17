@@ -47,7 +47,9 @@ export function SessionList({
       paddingLeft={1}
     >
       <Box paddingTop={1} paddingBottom={1}>
-        <Text bold color={focused ? theme.accent : theme.overlay1}>Sessions</Text>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>
+          Sessions
+        </Text>
         <Text color={theme.overlay0}> ({sessions.length})</Text>
         {selected && selected.size > 0 && (
           <Text color={theme.yellow}> · {selected.size} selected</Text>

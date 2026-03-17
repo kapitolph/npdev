@@ -1,5 +1,5 @@
-import { fetchRepoCommits, fetchRepos, fetchSessions, relativeTime } from "../lib/sessions";
 import { notFoundError } from "../lib/errors";
+import { fetchRepoCommits, fetchRepos, fetchSessions, relativeTime } from "../lib/sessions";
 import type { Machine } from "../types";
 
 export async function cmdRepoInfo(
@@ -10,11 +10,11 @@ export async function cmdRepoInfo(
   const repos = await fetchRepos(machine);
 
   // Match by name or path
-  const repo = repos.find(r => r.name === nameOrPath || r.path === nameOrPath);
+  const repo = repos.find((r) => r.name === nameOrPath || r.path === nameOrPath);
   if (!repo) {
     throw notFoundError(`Repo not found: ${nameOrPath}`, {
       requested: nameOrPath,
-      available: repos.map(r => r.name),
+      available: repos.map((r) => r.name),
     });
   }
 
@@ -23,14 +23,20 @@ export async function cmdRepoInfo(
     fetchRepoCommits(machine, repo.path),
   ]);
 
-  const repoSessions = sessions.filter(s => s.pane_cwd && s.pane_cwd.startsWith(repo.path));
+  const repoSessions = sessions.filter((s) => s.pane_cwd && s.pane_cwd.startsWith(repo.path));
 
   if (opts.json) {
-    console.log(JSON.stringify({
-      ...repo,
-      sessions: repoSessions,
-      commits: commits.slice(0, opts.commits || 10),
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...repo,
+          sessions: repoSessions,
+          commits: commits.slice(0, opts.commits || 10),
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -45,7 +51,9 @@ export async function cmdRepoInfo(
       const count = parseInt(s.client_count || "0", 10);
       const status = count > 0 ? "active" : "idle";
       const users = count > 0 ? (s.attached_users || "").split(",").filter(Boolean).join(",") : "";
-      console.log(`  ${s.name.padEnd(20)}  ${s.owner.padEnd(10)}  ${status.padEnd(6)}  ${relativeTime(s.last_activity)}${users ? `  [${users}]` : ""}`);
+      console.log(
+        `  ${s.name.padEnd(20)}  ${s.owner.padEnd(10)}  ${status.padEnd(6)}  ${relativeTime(s.last_activity)}${users ? `  [${users}]` : ""}`,
+      );
     }
   } else {
     console.log("Sessions: none");

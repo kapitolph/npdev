@@ -8,9 +8,7 @@ export function isMoshInstalled(): boolean {
 export async function installMosh(): Promise<{ success: boolean; error?: string }> {
   const os = platform();
   const args =
-    os === "darwin"
-      ? ["brew", "install", "mosh"]
-      : ["sudo", "apt-get", "install", "-y", "mosh"];
+    os === "darwin" ? ["brew", "install", "mosh"] : ["sudo", "apt-get", "install", "-y", "mosh"];
 
   const proc = Bun.spawn(args, {
     stdout: "pipe",

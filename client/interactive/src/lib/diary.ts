@@ -18,11 +18,15 @@ export async function fetchDiary(machine: Machine): Promise<DiaryData> {
 
   try {
     if (res3h.stdout.trim()) latest3h = JSON.parse(res3h.stdout.trim());
-  } catch { /* ignore parse errors */ }
+  } catch {
+    /* ignore parse errors */
+  }
 
   try {
     if (resEod.stdout.trim()) latestEod = JSON.parse(resEod.stdout.trim());
-  } catch { /* ignore parse errors */ }
+  } catch {
+    /* ignore parse errors */
+  }
 
   return { latest3h, latestEod };
 }
@@ -32,9 +36,8 @@ export async function fetchDiaryEntries(
   machine: Machine,
   type: "3h" | "eod",
 ): Promise<SummaryJsonlRecord[]> {
-  const file = type === "3h"
-    ? "/home/dev/brain/latest-3h.jsonl"
-    : "/home/dev/brain/latest-daily.jsonl";
+  const file =
+    type === "3h" ? "/home/dev/brain/latest-3h.jsonl" : "/home/dev/brain/latest-daily.jsonl";
 
   const res = await sshExec(machine, `cat ${file} 2>/dev/null || echo ''`);
   const lines = res.stdout.trim().split("\n").filter(Boolean);
@@ -43,7 +46,9 @@ export async function fetchDiaryEntries(
   for (const line of lines) {
     try {
       entries.push(JSON.parse(line));
-    } catch { /* skip malformed lines */ }
+    } catch {
+      /* skip malformed lines */
+    }
   }
 
   // Newest first

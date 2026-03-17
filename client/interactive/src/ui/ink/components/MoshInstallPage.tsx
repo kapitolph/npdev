@@ -36,7 +36,9 @@ function ProgressBar({ width, color }: { width: number; color: string }) {
   return (
     <Box>
       <Text color={color}>{"█".repeat(filled)}</Text>
-      <Text color={color} dimColor>{"░".repeat(empty)}</Text>
+      <Text color={color} dimColor>
+        {"░".repeat(empty)}
+      </Text>
       <Text color={color}> {Math.round(progress)}%</Text>
     </Box>
   );
@@ -128,13 +130,9 @@ export function MoshInstallPage({ onInstalled, onBack }: Props) {
             </>
           )}
 
-          {step === "done" && (
-            <Text color={theme.green}>mosh installed successfully</Text>
-          )}
+          {step === "done" && <Text color={theme.green}>mosh installed successfully</Text>}
 
-          {step === "error" && (
-            <Text color={theme.red}>✗ {errorMsg}</Text>
-          )}
+          {step === "error" && <Text color={theme.red}>✗ {errorMsg}</Text>}
 
           <Text> </Text>
           <Text color={theme.overlay0}>
@@ -142,7 +140,7 @@ export function MoshInstallPage({ onInstalled, onBack }: Props) {
               "Please wait..."
             ) : step === "prompt" ? (
               <>
-                <Text color={BRAND_BLUE}>y</Text> install  <Text color={BRAND_BLUE}>n</Text> cancel
+                <Text color={BRAND_BLUE}>y</Text> install <Text color={BRAND_BLUE}>n</Text> cancel
               </>
             ) : (
               <>

@@ -71,17 +71,11 @@ export function StatusLine({
       </Text>
     );
   } else if (focusColumn === "team") {
-    content = (
-      <Text color={theme.overlay1}>
-        Viewing team sessions · tab to cycle
-      </Text>
-    );
+    content = <Text color={theme.overlay1}>Viewing team sessions · tab to cycle</Text>;
   } else if (selectionCount > 0) {
     content = (
       <Text>
-        <Text color={theme.yellow}>
-          {selectionCount} selected
-        </Text>
+        <Text color={theme.yellow}>{selectionCount} selected</Text>
         <Text color={theme.overlay1}> · </Text>
         <Text color={theme.accent}>k</Text>
         <Text color={theme.overlay1}> kill · </Text>
@@ -103,7 +97,9 @@ export function StatusLine({
   } else {
     content = (
       <Text color={theme.overlay1}>
-        {sessionCount > 0 ? `\u2191\u2193 navigate · \u2190\u2192 panels · \u21B5 select · k kill` : `n new session · q quit`}
+        {sessionCount > 0
+          ? `\u2191\u2193 navigate · \u2190\u2192 panels · \u21B5 select · k kill`
+          : `n new session · q quit`}
       </Text>
     );
   }

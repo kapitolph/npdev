@@ -33,9 +33,15 @@ export async function fetchRepos(machine: Machine): Promise<RepoData[]> {
 }
 
 export async function fetchRepoCommits(machine: Machine, repoPath: string): Promise<CommitData[]> {
-  const { stdout, exitCode } = await sshExec(machine, `bash ~/.vps/session.sh repo-commits '${repoPath}' 15`);
+  const { stdout, exitCode } = await sshExec(
+    machine,
+    `bash ~/.vps/session.sh repo-commits '${repoPath}' 15`,
+  );
   if (exitCode !== 0) {
-    throw remoteError("Failed to fetch repo commits from VPS", { exit_code: exitCode, repo_path: repoPath });
+    throw remoteError("Failed to fetch repo commits from VPS", {
+      exit_code: exitCode,
+      repo_path: repoPath,
+    });
   }
   if (!stdout) return [];
   try {
@@ -51,17 +57,24 @@ export async function fetchRepoCommits(machine: Machine, repoPath: string): Prom
 export function deriveRepoName(session: SessionData, repos: RepoData[]): string | undefined {
   if (!session.pane_cwd) return undefined;
   const match = repos
-    .filter(r => session.pane_cwd!.startsWith(r.path))
+    .filter((r) => session.pane_cwd!.startsWith(r.path))
     .sort((a, b) => b.path.length - a.path.length)[0];
   return match?.name;
 }
 
 /** Returns sessions whose most specific repo match is exactly `repoPath` (not a child repo). */
-export function sessionsForRepo(sessions: SessionData[], repos: RepoData[], repoPath: string): SessionData[] {
-  return sessions.filter(s => {
+export function sessionsForRepo(
+  sessions: SessionData[],
+  repos: RepoData[],
+  repoPath: string,
+): SessionData[] {
+  return sessions.filter((s) => {
     if (!s.pane_cwd || !s.pane_cwd.startsWith(repoPath)) return false;
     // Exclude if a deeper child repo is a better match
-    const deeperMatch = repos.some(r => r.path !== repoPath && r.path.startsWith(repoPath + "/") && s.pane_cwd!.startsWith(r.path));
+    const deeperMatch = repos.some(
+      (r) =>
+        r.path !== repoPath && r.path.startsWith(repoPath + "/") && s.pane_cwd!.startsWith(r.path),
+    );
     return !deeperMatch;
   });
 }

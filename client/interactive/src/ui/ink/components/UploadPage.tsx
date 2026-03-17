@@ -136,17 +136,10 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
     }
   });
 
-  const titleText = step === "done"
-    ? "UPLOAD COMPLETE"
-    : step === "error"
-      ? "UPLOAD FAILED"
-      : "UPLOAD FILE";
+  const titleText =
+    step === "done" ? "UPLOAD COMPLETE" : step === "error" ? "UPLOAD FAILED" : "UPLOAD FILE";
 
-  const borderColor = step === "done"
-    ? theme.green
-    : step === "error"
-      ? theme.red
-      : theme.accent;
+  const borderColor = step === "done" ? theme.green : step === "error" ? theme.red : theme.accent;
 
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
@@ -168,8 +161,8 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
           paddingY={1}
         >
           {/* Step: Select project */}
-          {step === "select-project" && (
-            repos.length === 0 ? (
+          {step === "select-project" &&
+            (repos.length === 0 ? (
               <Text color={theme.overlay1}>No projects found</Text>
             ) : (
               <>
@@ -186,13 +179,14 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
                   );
                 })}
               </>
-            )
-          )}
+            ))}
 
           {/* Step: Input path */}
           {step === "input-path" && selectedRepo && (
             <>
-              <Text color={theme.green}>{"\u2713"} {selectedRepo.name}</Text>
+              <Text color={theme.green}>
+                {"\u2713"} {selectedRepo.name}
+              </Text>
               <Text> </Text>
               <Text color={theme.overlay1}>Drag a file here or type path</Text>
               <Box>
@@ -201,7 +195,9 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
               </Box>
               {errorMsg ? (
                 <Box paddingTop={1}>
-                  <Text color={theme.red}>{"\u2717"} {errorMsg}</Text>
+                  <Text color={theme.red}>
+                    {"\u2717"} {errorMsg}
+                  </Text>
                 </Box>
               ) : (
                 <Box paddingTop={1}>
@@ -214,7 +210,9 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
           {/* Step: Uploading */}
           {step === "uploading" && (
             <>
-              <Text color={theme.green}>{"\u2713"} {selectedRepo?.name}</Text>
+              <Text color={theme.green}>
+                {"\u2713"} {selectedRepo?.name}
+              </Text>
               <Text> </Text>
               <Spinner label={`Uploading ${basename(normalizedPath)}...`} />
             </>
@@ -223,7 +221,9 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
           {/* Step: Done */}
           {step === "done" && (
             <>
-              <Text color={theme.green}>{"\u2713"} Uploaded {basename(normalizedPath)}</Text>
+              <Text color={theme.green}>
+                {"\u2713"} Uploaded {basename(normalizedPath)}
+              </Text>
               <Text> </Text>
               <Text color={theme.overlay0}>{resultMsg}</Text>
             </>
@@ -249,18 +249,18 @@ export function UploadPage({ machine, repos, isOnVPS, onBack }: Props) {
           ) : step === "select-project" ? (
             <>
               <Text color={BRAND_BLUE}>{"\u2191\u2193"}</Text> select{" "}
-              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> confirm{" "}
-              <Text color={BRAND_BLUE}>esc</Text> back
+              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> confirm <Text color={BRAND_BLUE}>esc</Text>{" "}
+              back
             </>
           ) : step === "input-path" ? (
             <>
-              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> upload{" "}
-              <Text color={BRAND_BLUE}>esc</Text> back
+              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> upload <Text color={BRAND_BLUE}>esc</Text>{" "}
+              back
             </>
           ) : (
             <>
-              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> done{" "}
-              <Text color={BRAND_BLUE}>esc</Text> back
+              <Text color={BRAND_BLUE}>{"\u21B5"}</Text> done <Text color={BRAND_BLUE}>esc</Text>{" "}
+              back
             </>
           )}
         </Text>

@@ -7,7 +7,7 @@ import { sshExec } from "../../lib/ssh";
 import type { Machine, RepoData, VersionInfo } from "../../types";
 import type { ButtonDef } from "./components/ButtonBar";
 import { ButtonBar } from "./components/ButtonBar";
-import { DiaryColumn, DIARY_ITEM_COUNT } from "./components/DiaryColumn";
+import { DIARY_ITEM_COUNT, DiaryColumn } from "./components/DiaryColumn";
 import { DiaryDetailPage } from "./components/DiaryDetailPage";
 import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
@@ -18,13 +18,13 @@ import { RepoDetailPage } from "./components/RepoDetailPage";
 import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
 import { SetupPage } from "./components/SetupPage";
-import { UploadPage } from "./components/UploadPage";
 import { SkeletonLoader } from "./components/SkeletonLoader";
 import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
 import { TeamSection } from "./components/TeamSection";
 import { UpdateChannelPage } from "./components/UpdateChannelPage";
 import { UpdatePage } from "./components/UpdatePage";
+import { UploadPage } from "./components/UploadPage";
 import { useTheme } from "./context/ThemeContext";
 import { useDiary } from "./hooks/useDiary";
 import { useRepos } from "./hooks/useRepos";
@@ -108,24 +108,30 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
   // Search filtering
   const searchLower = searchQuery.toLowerCase();
-  const filteredMine = searchActive && searchQuery
-    ? mine.filter(s => {
-        const repo = deriveRepoName(s, repos) || "";
-        return s.name.toLowerCase().includes(searchLower)
-          || s.owner.toLowerCase().includes(searchLower)
-          || s.description.toLowerCase().includes(searchLower)
-          || repo.toLowerCase().includes(searchLower);
-      })
-    : mine;
-  const filteredTeam = searchActive && searchQuery
-    ? team.filter(s => {
-        const repo = deriveRepoName(s, repos) || "";
-        return s.name.toLowerCase().includes(searchLower)
-          || s.owner.toLowerCase().includes(searchLower)
-          || s.description.toLowerCase().includes(searchLower)
-          || repo.toLowerCase().includes(searchLower);
-      })
-    : team;
+  const filteredMine =
+    searchActive && searchQuery
+      ? mine.filter((s) => {
+          const repo = deriveRepoName(s, repos) || "";
+          return (
+            s.name.toLowerCase().includes(searchLower) ||
+            s.owner.toLowerCase().includes(searchLower) ||
+            s.description.toLowerCase().includes(searchLower) ||
+            repo.toLowerCase().includes(searchLower)
+          );
+        })
+      : mine;
+  const filteredTeam =
+    searchActive && searchQuery
+      ? team.filter((s) => {
+          const repo = deriveRepoName(s, repos) || "";
+          return (
+            s.name.toLowerCase().includes(searchLower) ||
+            s.owner.toLowerCase().includes(searchLower) ||
+            s.description.toLowerCase().includes(searchLower) ||
+            repo.toLowerCase().includes(searchLower)
+          );
+        })
+      : team;
   const searchResultCount = searchActive ? filteredMine.length + filteredTeam.length : undefined;
   const hasFilteredTeam = filteredTeam.length > 0;
 
@@ -149,30 +155,50 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   }, [focusColumn, availableColumns.length]);
 
   // Current list / max items for current column
-  const currentMaxItems = focusColumn === "sessions" ? filteredMine.length
-    : focusColumn === "diary" ? DIARY_ITEM_COUNT
-    : focusColumn === "repos" ? repos.length
-    : filteredTeam.length;
+  const currentMaxItems =
+    focusColumn === "sessions"
+      ? filteredMine.length
+      : focusColumn === "diary"
+        ? DIARY_ITEM_COUNT
+        : focusColumn === "repos"
+          ? repos.length
+          : filteredTeam.length;
 
-  const currentCursor = focusColumn === "sessions" ? sessionCursor
-    : focusColumn === "diary" ? diaryCursor
-    : focusColumn === "repos" ? repoCursor
-    : teamCursor;
+  const currentCursor =
+    focusColumn === "sessions"
+      ? sessionCursor
+      : focusColumn === "diary"
+        ? diaryCursor
+        : focusColumn === "repos"
+          ? repoCursor
+          : teamCursor;
 
-  const setCurrentCursor = focusColumn === "sessions" ? setSessionCursor
-    : focusColumn === "diary" ? setDiaryCursor
-    : focusColumn === "repos" ? setRepoCursor
-    : setTeamCursor;
+  const setCurrentCursor =
+    focusColumn === "sessions"
+      ? setSessionCursor
+      : focusColumn === "diary"
+        ? setDiaryCursor
+        : focusColumn === "repos"
+          ? setRepoCursor
+          : setTeamCursor;
 
-  const currentScrollOffset = focusColumn === "sessions" ? sessionScrollOffset
-    : focusColumn === "diary" ? 0
-    : focusColumn === "repos" ? repoScrollOffset
-    : teamScrollOffset;
+  const currentScrollOffset =
+    focusColumn === "sessions"
+      ? sessionScrollOffset
+      : focusColumn === "diary"
+        ? 0
+        : focusColumn === "repos"
+          ? repoScrollOffset
+          : teamScrollOffset;
 
-  const setCurrentScrollOffset = focusColumn === "sessions" ? setSessionScrollOffset
-    : focusColumn === "diary" ? () => {}
-    : focusColumn === "repos" ? setRepoScrollOffset
-    : setTeamScrollOffset;
+  const setCurrentScrollOffset =
+    focusColumn === "sessions"
+      ? setSessionScrollOffset
+      : focusColumn === "diary"
+        ? () => {}
+        : focusColumn === "repos"
+          ? setRepoScrollOffset
+          : setTeamScrollOffset;
 
   // Chrome height calculation
   const compactLogo = rows < 30;
@@ -199,13 +225,13 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
   // Clamp cursors when lists change
   useEffect(() => {
-    setSessionCursor(c => Math.min(c, Math.max(0, filteredMine.length - 1)));
+    setSessionCursor((c) => Math.min(c, Math.max(0, filteredMine.length - 1)));
   }, [filteredMine.length]);
   useEffect(() => {
-    setRepoCursor(c => Math.min(c, Math.max(0, repos.length - 1)));
+    setRepoCursor((c) => Math.min(c, Math.max(0, repos.length - 1)));
   }, [repos.length]);
   useEffect(() => {
-    setTeamCursor(c => Math.min(c, Math.max(0, filteredTeam.length - 1)));
+    setTeamCursor((c) => Math.min(c, Math.max(0, filteredTeam.length - 1)));
   }, [filteredTeam.length]);
 
   // Auto-dismiss stale nudge after 5s
@@ -253,7 +279,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         ]
       : []),
     { key: "r", label: "Refresh", description: "Reload sessions and repos", action: doRefresh },
-    { key: "f", label: "Upload", description: "Upload a file to a project on the VPS", action: () => setRoute({ page: "upload" }) },
+    {
+      key: "f",
+      label: "Upload",
+      description: "Upload a file to a project on the VPS",
+      action: () => setRoute({ page: "upload" }),
+    },
     ...(!isOnVPS
       ? [
           {
@@ -271,7 +302,8 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
                 ? `Nightly available: v${version.latestNightly.version}`
                 : "Check for npdev updates",
             action: () => setRoute({ page: "update-select" }),
-            highlight: !!version.latest || (!!version.latestNightly && version.channel !== "nightly"),
+            highlight:
+              !!version.latest || (!!version.latestNightly && version.channel !== "nightly"),
             highlightColor: !version.latest && !!version.latestNightly ? theme.lavender : undefined,
           },
         ]
@@ -291,7 +323,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         setTeamScrollOffset(0);
       },
     },
-    { key: "q", label: "Quit", description: "Exit npdev", action: () => onAction({ type: "exit" }) },
+    {
+      key: "q",
+      label: "Quit",
+      description: "Exit npdev",
+      action: () => onAction({ type: "exit" }),
+    },
   ];
 
   // Clamp focused button when buttons change
@@ -315,12 +352,20 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (key.return) {
-        if (focusColumn === "sessions" && filteredMine.length > 0 && sessionCursor < filteredMine.length) {
+        if (
+          focusColumn === "sessions" &&
+          filteredMine.length > 0 &&
+          sessionCursor < filteredMine.length
+        ) {
           const s = filteredMine[sessionCursor];
           setSearchActive(false);
           setSearchQuery("");
           onAction({ type: "resume", sessionName: s.name });
-        } else if (focusColumn === "team" && filteredTeam.length > 0 && teamCursor < filteredTeam.length) {
+        } else if (
+          focusColumn === "team" &&
+          filteredTeam.length > 0 &&
+          teamCursor < filteredTeam.length
+        ) {
           const s = filteredTeam[teamCursor];
           setSearchActive(false);
           setSearchQuery("");
@@ -329,7 +374,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (key.backspace || key.delete) {
-        setSearchQuery(q => q.slice(0, -1));
+        setSearchQuery((q) => q.slice(0, -1));
         setSessionCursor(0);
         setSessionScrollOffset(0);
         setTeamCursor(0);
@@ -337,7 +382,11 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (key.downArrow) {
-        if (focusColumn === "sessions" && sessionCursor >= filteredMine.length - 1 && hasFilteredTeam) {
+        if (
+          focusColumn === "sessions" &&
+          sessionCursor >= filteredMine.length - 1 &&
+          hasFilteredTeam
+        ) {
           setFocusColumn("team");
           setTeamCursor(0);
           setTeamScrollOffset(0);
@@ -369,7 +418,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (input && !key.ctrl && !key.meta && input.length === 1 && input.charCodeAt(0) >= 32) {
-        setSearchQuery(q => q + input);
+        setSearchQuery((q) => q + input);
         setSessionCursor(0);
         setSessionScrollOffset(0);
         setTeamCursor(0);
@@ -474,7 +523,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           return;
         }
         if (key.return) {
-          const diaryType = diaryCursor === 0 ? "3h" as const : "eod" as const;
+          const diaryType = diaryCursor === 0 ? ("3h" as const) : ("eod" as const);
           setRoute({ page: "diary-detail", diaryType });
           return;
         }
@@ -495,13 +544,21 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       }
       if (input === "k" && (focusColumn === "sessions" || focusColumn === "team")) {
         // k in sessions or team column = kill
-        if (focusColumn === "sessions" && currentMaxItems > 0 && sessionCursor < filteredMine.length) {
+        if (
+          focusColumn === "sessions" &&
+          currentMaxItems > 0 &&
+          sessionCursor < filteredMine.length
+        ) {
           if (selected.size > 0) {
             setDashMode({ mode: "confirm-bulk", sessionNames: [...selected] });
           } else {
             setDashMode({ mode: "confirm-end", sessionName: filteredMine[sessionCursor].name });
           }
-        } else if (focusColumn === "team" && filteredTeam.length > 0 && teamCursor < filteredTeam.length) {
+        } else if (
+          focusColumn === "team" &&
+          filteredTeam.length > 0 &&
+          teamCursor < filteredTeam.length
+        ) {
           setDashMode({ mode: "confirm-end", sessionName: filteredTeam[teamCursor].name });
         }
         return;
@@ -532,7 +589,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       }
 
       // Space to toggle-select (sessions column only)
-      if (input === " " && focusColumn === "sessions" && filteredMine.length > 0 && sessionCursor < filteredMine.length) {
+      if (
+        input === " " &&
+        focusColumn === "sessions" &&
+        filteredMine.length > 0 &&
+        sessionCursor < filteredMine.length
+      ) {
         const name = filteredMine[sessionCursor].name;
         setSelected((prev) => {
           const next = new Set(prev);
@@ -579,7 +641,11 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   // --- Route: Repo Detail ---
   if (route.page === "repo-detail") {
     const { repoPath, repoName } = route;
-    const repo = repos.find(r => r.path === repoPath) || { path: repoPath, name: repoName, branch: "unknown" };
+    const repo = repos.find((r) => r.path === repoPath) || {
+      path: repoPath,
+      name: repoName,
+      branch: "unknown",
+    };
     return (
       <RepoDetailPage
         machine={machine}
@@ -610,7 +676,11 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     return (
       <UpdatePage
         channel={route.channel}
-        nightlyTag={route.channel === "nightly" && version.latestNightly ? `v${version.latestNightly.version}` : undefined}
+        nightlyTag={
+          route.channel === "nightly" && version.latestNightly
+            ? `v${version.latestNightly.version}`
+            : undefined
+        }
         onDone={() => onAction({ type: "update-done" })}
       />
     );
@@ -701,9 +771,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   );
 
   // Left peek: column just before viewportStart
-  const leftPeekColumn = viewport.hasLeftPeek
-    ? availableColumns[viewport.viewportStart - 1]
-    : null;
+  const leftPeekColumn = viewport.hasLeftPeek ? availableColumns[viewport.viewportStart - 1] : null;
   // Right peek: column just after the last visible
   const rightPeekColumn = viewport.hasRightPeek
     ? availableColumns[viewport.viewportStart + viewport.visibleFullCount]
@@ -774,34 +842,40 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     }
   };
 
-  const sessionPanels = isEmpty && !showRepos ? (
-    <Box flexGrow={1} paddingY={1}>
-      <EmptyState />
-    </Box>
-  ) : (
-    <Box flexDirection="row" flexGrow={1}>
-      {leftPeekColumn && (
-        <PeekSliver label={COLUMN_LABELS[leftPeekColumn]} side="left" />
-      )}
-      {visibleColumns.map(renderColumn)}
-      {rightPeekColumn && (
-        <PeekSliver label={COLUMN_LABELS[rightPeekColumn]} side="right" />
-      )}
-    </Box>
-  );
+  const sessionPanels =
+    isEmpty && !showRepos ? (
+      <Box flexGrow={1} paddingY={1}>
+        <EmptyState />
+      </Box>
+    ) : (
+      <Box flexDirection="row" flexGrow={1}>
+        {leftPeekColumn && <PeekSliver label={COLUMN_LABELS[leftPeekColumn]} side="left" />}
+        {visibleColumns.map(renderColumn)}
+        {rightPeekColumn && <PeekSliver label={COLUMN_LABELS[rightPeekColumn]} side="right" />}
+      </Box>
+    );
 
   // Context-sensitive description
   let contextDescription: string | undefined;
   if (cursorArea === "sessions" && !searchActive) {
-    if (focusColumn === "sessions" && filteredMine.length > 0 && sessionCursor < filteredMine.length) {
+    if (
+      focusColumn === "sessions" &&
+      filteredMine.length > 0 &&
+      sessionCursor < filteredMine.length
+    ) {
       const s = filteredMine[sessionCursor];
       const attached = (s.attached_users || "").split(",").filter(Boolean);
-      const others = attached.filter(u => u !== npdevUser);
+      const others = attached.filter((u) => u !== npdevUser);
       const parts = [`Enter your session "${s.name}"`];
       if (others.length > 0) parts.push(`${others.join(", ")} online`);
-      else if (parseInt(s.client_count || "0", 10) === 0) parts.push(`idle ${relativeTime(s.last_activity)}`);
+      else if (parseInt(s.client_count || "0", 10) === 0)
+        parts.push(`idle ${relativeTime(s.last_activity)}`);
       contextDescription = parts.join(" · ");
-    } else if (focusColumn === "team" && filteredTeam.length > 0 && teamCursor < filteredTeam.length) {
+    } else if (
+      focusColumn === "team" &&
+      filteredTeam.length > 0 &&
+      teamCursor < filteredTeam.length
+    ) {
       const s = filteredTeam[teamCursor];
       const attached = (s.attached_users || "").split(",").filter(Boolean);
       const isActive = parseInt(s.client_count || "0", 10) > 0;
@@ -814,11 +888,15 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       contextDescription = `${diaryLabel} · Enter to view full entry`;
     } else if (focusColumn === "repos" && repos.length > 0 && repoCursor < repos.length) {
       const repo = repos[repoCursor];
-      const activeUsers = [...new Set(
-        sessions
-          .filter(s => s.pane_cwd?.startsWith(repo.path) && parseInt(s.client_count || "0", 10) > 0)
-          .flatMap(s => (s.attached_users || s.owner || "").split(",").filter(Boolean)),
-      )];
+      const activeUsers = [
+        ...new Set(
+          sessions
+            .filter(
+              (s) => s.pane_cwd?.startsWith(repo.path) && parseInt(s.client_count || "0", 10) > 0,
+            )
+            .flatMap((s) => (s.attached_users || s.owner || "").split(",").filter(Boolean)),
+        ),
+      ];
       const parts = [`View details for ${repo.name}`];
       if (activeUsers.length > 0) parts.push(`${activeUsers.join(", ")} active`);
       contextDescription = parts.join(" · ");
@@ -843,14 +921,14 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           buttons={buttons}
           focusedIndex={focusedButton}
           isFocusZone={cursorArea === "actions" && !searchActive}
-          contextDescription={cursorArea === "sessions" && !searchActive ? contextDescription : undefined}
+          contextDescription={
+            cursorArea === "sessions" && !searchActive ? contextDescription : undefined
+          }
           searchQuery={searchActive ? searchQuery : undefined}
           searchResultCount={searchResultCount}
         />
       </Box>
-      {showStaleNudge && stale.length > 0 && (
-        <StaleNudge count={stale.length} />
-      )}
+      {showStaleNudge && stale.length > 0 && <StaleNudge count={stale.length} />}
       <Box flexDirection="column" flexGrow={1} paddingX={1}>
         {sessionPanels}
       </Box>

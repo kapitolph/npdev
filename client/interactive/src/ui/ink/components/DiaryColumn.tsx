@@ -15,7 +15,20 @@ function formatTimestamp(ts: string): string {
   const [date, time] = ts.split(" ");
   if (!date || !time) return ts;
   const [, month, day] = date.split("-");
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const m = months[parseInt(month, 10) - 1] || month;
   return `${m} ${parseInt(day, 10)}, ${time}`;
 }
@@ -55,11 +68,8 @@ function DiaryBox({
   const theme = useTheme();
   const contentWidth = Math.max(10, width - 6);
 
-  const borderColor = active && focused
-    ? theme.accent
-    : focused
-      ? theme.panelBorder
-      : theme.panelBorder;
+  const borderColor =
+    active && focused ? theme.accent : focused ? theme.panelBorder : theme.panelBorder;
 
   if (!entry) {
     return (
@@ -71,7 +81,9 @@ function DiaryBox({
         paddingRight={1}
       >
         <Box paddingBottom={0}>
-          <Text bold color={active && focused ? theme.accent : theme.overlay1}>{title}</Text>
+          <Text bold color={active && focused ? theme.accent : theme.overlay1}>
+            {title}
+          </Text>
         </Box>
         <Text color={theme.overlay0}>No entries yet</Text>
       </Box>
@@ -104,11 +116,13 @@ function DiaryBox({
       paddingRight={1}
     >
       <Box paddingBottom={0}>
-        <Text bold color={active && focused ? theme.accent : theme.overlay1}>{title}</Text>
+        <Text bold color={active && focused ? theme.accent : theme.overlay1}>
+          {title}
+        </Text>
       </Box>
       {visible.map((line, i) =>
         line.text === "" ? (
-          <Text key={i}>{" "}</Text>
+          <Text key={i}> </Text>
         ) : (
           <Text key={i} color={line.color} bold={line.bold} wrap="truncate">
             {line.text}
@@ -116,10 +130,14 @@ function DiaryBox({
         ),
       )}
       {remaining > 0 && (
-        <Text color={theme.overlay0}>{"\u2193"} {remaining} more</Text>
+        <Text color={theme.overlay0}>
+          {"\u2193"} {remaining} more
+        </Text>
       )}
       {active && focused && (
-        <Text color={theme.overlay0} dimColor>Enter to view</Text>
+        <Text color={theme.overlay0} dimColor>
+          Enter to view
+        </Text>
       )}
     </Box>
   );
@@ -153,7 +171,9 @@ export function DiaryColumn({
       paddingLeft={1}
     >
       <Box paddingTop={1} paddingBottom={1}>
-        <Text bold color={focused ? theme.accent : theme.overlay1}>Diary</Text>
+        <Text bold color={focused ? theme.accent : theme.overlay1}>
+          Diary
+        </Text>
       </Box>
       <DiaryBox
         entry={latest3h}

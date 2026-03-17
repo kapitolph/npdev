@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchDiary, type DiaryData } from "../../../lib/diary";
+import { type DiaryData, fetchDiary } from "../../../lib/diary";
 import type { Machine } from "../../../types";
 
 interface UseDiaryResult {

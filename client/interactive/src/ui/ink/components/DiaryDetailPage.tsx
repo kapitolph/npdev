@@ -24,7 +24,20 @@ function formatTimestamp(ts: string): string {
   const [date, time] = ts.split(" ");
   if (!date || !time) return ts;
   const [year, month, day] = date.split("-");
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const m = months[parseInt(month, 10) - 1] || month;
   return `${m} ${parseInt(day, 10)}, ${year} ${time}`;
 }
@@ -103,13 +116,16 @@ export function DiaryDetailPage({ machine, type, initialEntry, onBack }: Props) 
   const footerHeight = 2;
   const maxBodyLines = Math.max(2, rows - headerHeight - footerHeight);
 
-  const navigate = useCallback((delta: number) => {
-    setEntryIndex((prev) => {
-      const next = Math.max(0, Math.min(prev + delta, entries.length - 1));
-      if (next !== prev) setScrollOffset(0);
-      return next;
-    });
-  }, [entries.length]);
+  const navigate = useCallback(
+    (delta: number) => {
+      setEntryIndex((prev) => {
+        const next = Math.max(0, Math.min(prev + delta, entries.length - 1));
+        if (next !== prev) setScrollOffset(0);
+        return next;
+      });
+    },
+    [entries.length],
+  );
 
   useInput((input, key) => {
     if (key.escape || input === "q") {
@@ -147,7 +163,9 @@ export function DiaryDetailPage({ machine, type, initialEntry, onBack }: Props) 
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
       {/* Header */}
       <Box flexDirection="column" paddingX={2} paddingTop={1}>
-        <Text bold color={theme.accent}>{title}</Text>
+        <Text bold color={theme.accent}>
+          {title}
+        </Text>
         {entry ? (
           <>
             <Text color={theme.lavender}>{formatTimestamp(entry.timestamp)}</Text>
@@ -169,7 +187,11 @@ export function DiaryDetailPage({ machine, type, initialEntry, onBack }: Props) 
 
       {/* Entry body */}
       <Box flexDirection="column" flexGrow={1} paddingX={2} paddingTop={1}>
-        {aboveCount > 0 && <Text color={theme.overlay1}>{"\u2191"} {aboveCount} more</Text>}
+        {aboveCount > 0 && (
+          <Text color={theme.overlay1}>
+            {"\u2191"} {aboveCount} more
+          </Text>
+        )}
         {visibleLines.map((line, i) => {
           switch (line.type) {
             case "heading":
@@ -185,12 +207,16 @@ export function DiaryDetailPage({ machine, type, initialEntry, onBack }: Props) 
                 </Text>
               );
             case "spacer":
-              return <Text key={`${scrollOffset + i}`}>{" "}</Text>;
+              return <Text key={`${scrollOffset + i}`}> </Text>;
             default:
               return <Text key={`${scrollOffset + i}`}>{line.text}</Text>;
           }
         })}
-        {belowCount > 0 && <Text color={theme.overlay1}>{"\u2193"} {belowCount} more</Text>}
+        {belowCount > 0 && (
+          <Text color={theme.overlay1}>
+            {"\u2193"} {belowCount} more
+          </Text>
+        )}
       </Box>
 
       {/* Footer */}

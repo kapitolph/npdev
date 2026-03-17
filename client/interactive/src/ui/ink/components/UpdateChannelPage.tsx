@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
-import type { ReleaseInfo } from "../../../types";
 import { relativeTimeFromISO } from "../../../lib/version";
+import type { ReleaseInfo } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
 import { useTerminalSize } from "../hooks/useTerminalSize";
 
@@ -15,7 +15,13 @@ interface Props {
 
 type Phase = "select" | "confirm-nightly";
 
-export function UpdateChannelPage({ latestStable, latestNightly, currentChannel, onSelect, onBack }: Props) {
+export function UpdateChannelPage({
+  latestStable,
+  latestNightly,
+  currentChannel,
+  onSelect,
+  onBack,
+}: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
 
@@ -26,10 +32,7 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
   const channels: Channel[] = ["stable", "nightly"];
 
   // Pre-select: prefer stable if on nightly (downgrade), otherwise first available update
-  const initialIdx = currentChannel === "nightly" ? 0
-    : hasStable ? 0
-    : hasNightly ? 1
-    : 0;
+  const initialIdx = currentChannel === "nightly" ? 0 : hasStable ? 0 : hasNightly ? 1 : 0;
 
   const [cursor, setCursor] = useState(initialIdx);
   const [phase, setPhase] = useState<Phase>("select");
@@ -53,11 +56,11 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
       return;
     }
     if (key.upArrow || input === "k") {
-      setCursor(c => Math.max(0, c - 1));
+      setCursor((c) => Math.max(0, c - 1));
       return;
     }
     if (key.downArrow || input === "j") {
-      setCursor(c => Math.min(channels.length - 1, c + 1));
+      setCursor((c) => Math.min(channels.length - 1, c + 1));
       return;
     }
     if (key.return) {
@@ -81,7 +84,9 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
         <Box flexGrow={1} />
 
         <Box flexDirection="column" alignItems="center">
-          <Text color={theme.yellow} bold>INSTALL NIGHTLY?</Text>
+          <Text color={theme.yellow} bold>
+            INSTALL NIGHTLY?
+          </Text>
           <Text> </Text>
 
           <Box
@@ -97,19 +102,18 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
               Nightly builds may contain untested changes{"\n"}and could be unstable.
             </Text>
             <Text> </Text>
-            <Text color={theme.overlay1}>
-              You can always revert to stable with:
+            <Text color={theme.overlay1}>You can always revert to stable with:</Text>
+            <Text color={theme.green} bold>
+              {" "}
+              npdev update
             </Text>
-            <Text color={theme.green} bold>  npdev update</Text>
           </Box>
         </Box>
 
         <Box flexGrow={1} />
 
         <Box paddingX={1}>
-          <Text color={theme.overlay0}>
-            {"↵/y confirm · esc/n cancel"}
-          </Text>
+          <Text color={theme.overlay0}>{"↵/y confirm · esc/n cancel"}</Text>
         </Box>
       </Box>
     );
@@ -120,7 +124,9 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
       <Box flexGrow={1} />
 
       <Box flexDirection="column" alignItems="center">
-        <Text color={theme.overlay0} dimColor>UPDATE</Text>
+        <Text color={theme.overlay0} dimColor>
+          UPDATE
+        </Text>
         <Text> </Text>
 
         <Box
@@ -142,17 +148,17 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
             if (!isAvailable) {
               // Grayed-out row — no update for this channel
               return (
-                <Box key={ch} flexDirection="column" paddingBottom={i < channels.length - 1 ? 1 : 0}>
+                <Box
+                  key={ch}
+                  flexDirection="column"
+                  paddingBottom={i < channels.length - 1 ? 1 : 0}
+                >
                   <Box>
                     <Text color={isFocused ? theme.surface2 : theme.surface1}>
                       {isFocused ? "▸ " : "  "}
                     </Text>
-                    <Text color={theme.surface2}>
-                      {label}
-                    </Text>
-                    <Text color={theme.surface2}>
-                      {"    "}No update available
-                    </Text>
+                    <Text color={theme.surface2}>{label}</Text>
+                    <Text color={theme.surface2}>{"    "}No update available</Text>
                   </Box>
                 </Box>
               );
@@ -192,9 +198,7 @@ export function UpdateChannelPage({ latestStable, latestNightly, currentChannel,
       <Box flexGrow={1} />
 
       <Box paddingX={1}>
-        <Text color={theme.overlay0}>
-          {"↑↓ select · ↵ confirm · esc back"}
-        </Text>
+        <Text color={theme.overlay0}>{"↑↓ select · ↵ confirm · esc back"}</Text>
       </Box>
     </Box>
   );

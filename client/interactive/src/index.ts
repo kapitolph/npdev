@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { chmod, copyFile, mkdir, rename, writeFile } from "node:fs/promises";
-import { hostname, homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { cmdDescribe } from "./commands/describe";
@@ -22,18 +22,12 @@ import {
 import { cmdSyncKeys } from "./commands/sync-keys";
 import { cmdUpdate, WRAPPER_SCRIPT } from "./commands/update";
 import { isOnVPS, loadConfig, loadMachines } from "./lib/config";
-import {
-  EXIT_CODES,
-  renderError,
-  usageError,
-  configError,
-  notFoundError,
-} from "./lib/errors";
+import { configError, EXIT_CODES, notFoundError, renderError, usageError } from "./lib/errors";
 import { selectMachine } from "./lib/machine";
 import { isMoshInstalled } from "./lib/mosh";
+import { fetchSessions } from "./lib/sessions";
 import { buildCapabilitiesDocument, buildSpecDocument, findCommandSpec } from "./lib/spec";
 import type { SummaryWindow } from "./lib/summaries";
-import { fetchSessions } from "./lib/sessions";
 import { checkVersion, NPDEV_VERSION } from "./lib/version";
 import type { Machine } from "./types";
 import { mainMenu } from "./ui/menu";
@@ -409,12 +403,20 @@ async function main(): Promise<void> {
   // Check machines exist
   const machines = await loadMachines();
   if (machines.length === 0 && !isOnVPS()) {
-    throw configError("npdev not configured. Run: npdev update (or bash client/setup.sh from repo)");
+    throw configError(
+      "npdev not configured. Run: npdev update (or bash client/setup.sh from repo)",
+    );
   }
 
   // Version check (non-blocking, skip for JSON/non-interactive)
   const versionPromise = flags.json
-    ? Promise.resolve({ current: NPDEV_VERSION, latest: null, latestStable: null, latestNightly: null, channel: "stable" as const })
+    ? Promise.resolve({
+        current: NPDEV_VERSION,
+        latest: null,
+        latestStable: null,
+        latestNightly: null,
+        channel: "stable" as const,
+      })
     : checkVersion();
 
   // Select machine (skip on VPS)
@@ -425,7 +427,8 @@ async function main(): Promise<void> {
     return selectMachine(flags.machine, { interactive: process.stdin.isTTY && !flags.json });
   };
 
-  const moshOpts = config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
+  const moshOpts =
+    config.moshEnabled && !isOnVPS() && isMoshInstalled() ? { mosh: true } : undefined;
 
   // --- Command dispatch ---
 
@@ -472,7 +475,10 @@ async function main(): Promise<void> {
   // npdev . : session from current git branch
   if (command === ".") {
     if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
-    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+    const proc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const branch = (await new Response(proc.stdout).text()).trim();
     const exitCode = await proc.exited;
     if (exitCode !== 0 || !branch || branch === "HEAD") {
@@ -509,7 +515,7 @@ async function main(): Promise<void> {
   // npdev start <name> [--desc ".."] [--repo <path>]
   if (command === "start") {
     const name = remaining[0];
-    if (!name) throw usageError("Usage: npdev start <name> [--desc \"...\"] [--repo <path>]");
+    if (!name) throw usageError('Usage: npdev start <name> [--desc "..."] [--repo <path>]');
     if (!npdevUser) throw configError("Developer identity not set. Run: npdev setup");
     const machine = await getMachine();
     await cmdStart(machine, name, npdevUser, flags.desc, flags.repo, moshOpts);
@@ -586,7 +592,10 @@ async function main(): Promise<void> {
       if (flags.window !== "3h" && flags.window !== "daily") {
         throw usageError("Usage: npdev summaries generate --window 3h|daily [--json]");
       }
-      await cmdSummariesGenerate(machine, flags.window as SummaryWindow, { json: flags.json, repo: flags.repo });
+      await cmdSummariesGenerate(machine, flags.window as SummaryWindow, {
+        json: flags.json,
+        repo: flags.repo,
+      });
       process.exit(0);
     }
     throw usageError(`Unknown summaries subcommand: ${subcommand}`, { subcommand });

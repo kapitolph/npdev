@@ -7,7 +7,6 @@ import { MACHINES_FILE, npdevDir } from "../../../lib/config";
 import { useTheme } from "../context/ThemeContext";
 import { useTerminalSize } from "../hooks/useTerminalSize";
 
-
 const GITHUB_REPO = "kapitolph/npdev";
 
 type UpdateStep = "machines" | "version" | "binary" | "done" | "error";
@@ -171,9 +170,10 @@ export function UpdatePage({ channel, nightlyTag, onDone }: Props) {
     try {
       const os = process.platform === "darwin" ? "darwin" : "linux";
       const arch = process.arch === "arm64" ? "arm64" : "x64";
-      const url = isNightly && resolvedTag
-        ? `https://github.com/${GITHUB_REPO}/releases/download/${resolvedTag}/npdev-${os}-${arch}`
-        : `https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${os}-${arch}`;
+      const url =
+        isNightly && resolvedTag
+          ? `https://github.com/${GITHUB_REPO}/releases/download/${resolvedTag}/npdev-${os}-${arch}`
+          : `https://github.com/${GITHUB_REPO}/releases/latest/download/npdev-${os}-${arch}`;
       const resp = await fetch(url, { redirect: "follow" });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -256,17 +256,23 @@ export function UpdatePage({ channel, nightlyTag, onDone }: Props) {
     state.step === "done" || state.step === "error" ? "binary" : state.step,
   );
 
-  const title = state.step === "done"
-    ? "UPDATE COMPLETE"
-    : state.step === "error"
-      ? "UPDATE FAILED"
-      : isNightly ? "UPDATING TO NIGHTLY" : "UPDATING TO STABLE";
+  const title =
+    state.step === "done"
+      ? "UPDATE COMPLETE"
+      : state.step === "error"
+        ? "UPDATE FAILED"
+        : isNightly
+          ? "UPDATING TO NIGHTLY"
+          : "UPDATING TO STABLE";
 
-  const borderColor = state.step === "error"
-    ? theme.red
-    : state.step === "done"
-      ? theme.green
-      : isNightly ? theme.lavender : theme.accent;
+  const borderColor =
+    state.step === "error"
+      ? theme.red
+      : state.step === "done"
+        ? theme.green
+        : isNightly
+          ? theme.lavender
+          : theme.accent;
 
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
@@ -296,7 +302,15 @@ export function UpdatePage({ channel, nightlyTag, onDone }: Props) {
               return (
                 <Text
                   key={s.key}
-                  color={isDone ? theme.green : isCurrent ? (isNightly ? theme.lavender : theme.accent) : theme.overlay0}
+                  color={
+                    isDone
+                      ? theme.green
+                      : isCurrent
+                        ? isNightly
+                          ? theme.lavender
+                          : theme.accent
+                        : theme.overlay0
+                  }
                 >
                   {isDone ? "✓" : isCurrent ? spinner : "○"}{" "}
                   <Text color={isDone ? theme.green : isCurrent ? theme.text : theme.overlay0}>
