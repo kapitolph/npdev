@@ -2,7 +2,6 @@ import { Box, Spacer, Text } from "ink";
 import { businessDaysElapsed, relativeTime, STALE_BUSINESS_DAYS } from "../../../lib/sessions";
 import type { SessionData } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
-import type { Layout } from "../hooks/useTerminalSize";
 import { icons } from "../theme";
 
 interface Props {
@@ -12,11 +11,10 @@ interface Props {
   showOwner?: boolean;
   ownerLabel?: string;
   repoName?: string;
-  layout: Layout;
   width: number;
 }
 
-export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabel, repoName, layout, width }: Props) {
+export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabel, repoName, width }: Props) {
   const theme = useTheme();
   const count = parseInt(session.client_count || "0", 10);
   const isStale = businessDaysElapsed(session.last_activity) > STALE_BUSINESS_DAYS;
@@ -30,13 +28,10 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
 
   const statusIcon = isActive ? icons.active : isStale ? icons.stale : icons.idle;
 
-  const displayName = layout === "narrow" ? session.name.slice(0, 16) : session.name;
-
   const hasDescription =
     session.description &&
     session.description !== "(no description)" &&
-    !isActive &&
-    layout !== "narrow";
+    !isActive;
 
   const ownerIsAttached = isActive && (session.attached_users || "").split(",").includes(session.owner);
 
@@ -55,7 +50,7 @@ export function SessionRow({ session, isSelected, isMarked, showOwner, ownerLabe
         <Text color={statusColor}>{statusIcon}</Text>
         <Text> </Text>
         <Text bold={isSelected} color={isSelected ? theme.accent : theme.text}>
-          {displayName}
+          {session.name}
         </Text>
         {showOwner && ownerLabel && (
           <Text color={ownerIsAttached ? theme.green : theme.overlay1}> {ownerLabel}</Text>

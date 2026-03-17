@@ -2,7 +2,6 @@ import { Box, Text } from "ink";
 import { deriveRepoName } from "../../../lib/sessions";
 import type { RepoData, SessionData } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
-import type { Layout } from "../hooks/useTerminalSize";
 import { SessionRow } from "./SessionRow";
 
 interface Props {
@@ -10,7 +9,6 @@ interface Props {
   repos: RepoData[];
   selectedIndex: number;
   selectable: boolean;
-  layout: Layout;
   width: number;
   scrollOffset: number;
   maxVisible: number;
@@ -23,7 +21,6 @@ export function SessionList({
   repos,
   selectedIndex,
   selectable,
-  layout,
   width,
   scrollOffset,
   maxVisible,
@@ -64,7 +61,6 @@ export function SessionList({
           isSelected={selectable && scrollOffset + i === selectedIndex}
           isMarked={selected?.has(s.name)}
           repoName={deriveRepoName(s, repos)}
-          layout={layout}
           width={width}
         />
       ))}

@@ -1,7 +1,6 @@
-import { Box, Spacer, Text } from "ink";
+import { Box, Text } from "ink";
 import type { VersionInfo } from "../../../types";
 import { useTheme } from "../context/ThemeContext";
-import type { Layout } from "../hooks/useTerminalSize";
 import { Logo } from "./Logo";
 
 interface Props {
@@ -10,26 +9,11 @@ interface Props {
   version: VersionInfo;
   cols: number;
   rows: number;
-  layout: Layout;
   isOnVPS: boolean;
 }
 
-export function Header({ machineName, npdevUser, version, cols, rows, layout, isOnVPS }: Props) {
+export function Header({ machineName, npdevUser, version, cols, rows, isOnVPS }: Props) {
   const theme = useTheme();
-
-  if (layout === "narrow") {
-    return (
-      <Box width={cols} backgroundColor={theme.highlight} paddingX={1}>
-        <Logo layout={layout} isOnVPS={isOnVPS} />
-        <Spacer />
-        <Box gap={1}>
-          <Text color={theme.subtext0}>{npdevUser}</Text>
-        </Box>
-      </Box>
-    );
-  }
-
-  // Use compact logo when terminal is short (< 30 rows)
   const compactLogo = rows < 30;
 
   // Determine update badge
@@ -40,7 +24,7 @@ export function Header({ machineName, npdevUser, version, cols, rows, layout, is
   return (
     <Box flexDirection="column" paddingBottom={compactLogo ? 0 : 1}>
       <Box paddingX={1} paddingTop={compactLogo ? 0 : 1}>
-        <Logo layout={layout} isOnVPS={isOnVPS} compact={compactLogo} />
+        <Logo isOnVPS={isOnVPS} compact={compactLogo} />
       </Box>
       <Box paddingX={1} gap={1} paddingTop={1}>
         <Text color={theme.subtext0}>npdev</Text>

@@ -1,5 +1,4 @@
 import { Box, Text } from "ink";
-import type { Layout } from "../hooks/useTerminalSize";
 import { BRAND_BLUE, VPS_GREEN } from "../theme";
 
 const LOGO_LINES = [
@@ -19,13 +18,12 @@ const VPS_LINES = [
 ];
 
 interface Props {
-  layout: Layout;
   isOnVPS: boolean;
   compact?: boolean;
 }
 
-export function Logo({ layout, isOnVPS, compact }: Props) {
-  if (layout === "narrow" || compact) {
+export function Logo({ isOnVPS, compact }: Props) {
+  if (compact) {
     return (
       <Box gap={1}>
         <Text backgroundColor={BRAND_BLUE} color="#1e1e2e" bold>

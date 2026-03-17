@@ -11,6 +11,7 @@ import { EmptyState } from "./components/EmptyState";
 import { Header } from "./components/Header";
 import { MoshInstallPage } from "./components/MoshInstallPage";
 import { NewSessionPage } from "./components/NewSessionPage";
+import { PeekSliver } from "./components/PeekSliver";
 import { RepoDetailPage } from "./components/RepoDetailPage";
 import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
@@ -19,7 +20,6 @@ import { UploadPage } from "./components/UploadPage";
 import { SkeletonLoader } from "./components/SkeletonLoader";
 import { StaleNudge } from "./components/StaleNudge";
 import { StatusLine } from "./components/StatusLine";
-import { TabBar } from "./components/TabBar";
 import { TeamSection } from "./components/TeamSection";
 import { UpdateChannelPage } from "./components/UpdateChannelPage";
 import { UpdatePage } from "./components/UpdatePage";
@@ -27,6 +27,7 @@ import { useTheme } from "./context/ThemeContext";
 import { useRepos } from "./hooks/useRepos";
 import { useSessions } from "./hooks/useSessions";
 import { useTerminalSize } from "./hooks/useTerminalSize";
+import { useViewport } from "./hooks/useViewport";
 
 type Route =
   | { page: "dashboard" }
@@ -55,6 +56,13 @@ export type AppAction =
 
 type FocusColumn = "sessions" | "repos" | "team";
 
+/** Map column IDs to their display labels for peek slivers */
+const COLUMN_LABELS: Record<FocusColumn, string> = {
+  sessions: "Sessions",
+  repos: "Repos",
+  team: "Team",
+};
+
 interface Props {
   machine: Machine;
   npdevUser: string;
@@ -67,7 +75,7 @@ interface Props {
 export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, onAction }: Props) {
   const { sessions, mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
   const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos(machine);
-  const { cols, rows, layout } = useTerminalSize();
+  const { cols, rows } = useTerminalSize();
   const theme = useTheme();
 
   const [route, setRoute] = useState<Route>({ page: "dashboard" });
@@ -83,19 +91,15 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   const [teamScrollOffset, setTeamScrollOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showStaleNudge, setShowStaleNudge] = useState(true);
-  const [lastLeftColumn, setLastLeftColumn] = useState<"sessions" | "team">("sessions");
   const [moshEnabled, setMoshEnabled] = useState(initialMoshEnabled);
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-
-  // For narrow layout, focusColumn doubles as the active tab
-  const narrowTab = focusColumn;
 
   // Determine which columns are available
   const hasRepos = repos.length > 0;
   const hasTeam = team.length > 0;
 
-  // Search filtering — filter both mine and team by query
+  // Search filtering
   const searchLower = searchQuery.toLowerCase();
   const filteredMine = searchActive && searchQuery
     ? mine.filter(s => {
@@ -116,9 +120,24 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       })
     : team;
   const searchResultCount = searchActive ? filteredMine.length + filteredTeam.length : undefined;
+  const hasFilteredTeam = filteredTeam.length > 0;
 
-  // Available columns in order
-  const availableColumns: FocusColumn[] = ["sessions", ...(hasRepos ? ["repos" as const] : []), ...(hasTeam ? ["team" as const] : [])];
+  // Available columns in order — repos hidden during search
+  const showRepos = hasRepos && !searchActive;
+  const availableColumns: FocusColumn[] = [
+    "sessions",
+    ...(showRepos ? ["repos" as const] : []),
+    ...(hasFilteredTeam ? ["team" as const] : []),
+  ];
+
+  // Viewport hook
+  const viewport = useViewport(cols, availableColumns.length);
+
+  // Ensure focused column is visible in viewport when focus changes
+  useEffect(() => {
+    const idx = availableColumns.indexOf(focusColumn);
+    if (idx >= 0) viewport.ensureVisible(idx);
+  }, [focusColumn, availableColumns.length]);
 
   // Current list / max items for current column
   const currentMaxItems = focusColumn === "sessions" ? filteredMine.length
@@ -141,21 +160,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     : focusColumn === "repos" ? setRepoScrollOffset
     : setTeamScrollOffset;
 
-  // Each session/repo row is 2 lines tall
-  // Chrome: header (logo+info) + buttons + description + status line
-  // Full logo ~10 lines, compact logo ~3 lines, narrow ~2 lines
+  // Chrome height calculation
   const compactLogo = rows < 30;
-  const chromeHeight = layout === "narrow" ? 8 : compactLogo ? 8 : 14;
-  // Section headers take ~3 lines each (paddingTop + text + paddingBottom)
+  const chromeHeight = compactLogo ? 8 : 14;
   const sectionHeaderHeight = 3;
   const contentRows = rows - chromeHeight;
   const maxVisible = Math.max(2, Math.floor((contentRows - sectionHeaderHeight) / 2));
-  // In stacked mode (normal layout with team), each half gets its own section header
-  const maxVisibleStacked = Math.max(2, Math.floor((contentRows - sectionHeaderHeight * 2) / 4));
-
-  // Effective maxVisible for the current column (stacked sections get fewer rows)
-  const isStacked = layout === "normal" && filteredTeam.length > 0 && (focusColumn === "sessions" || focusColumn === "team");
-  const effectiveMaxVisible = isStacked ? maxVisibleStacked : maxVisible;
 
   // Move cursor and scroll offset together
   const moveCursor = useCallback(
@@ -164,13 +174,13 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         const next = Math.max(0, Math.min(prev + delta, currentMaxItems - 1));
         setCurrentScrollOffset((offset) => {
           if (next < offset) return next;
-          if (next >= offset + effectiveMaxVisible) return next - effectiveMaxVisible + 1;
+          if (next >= offset + maxVisible) return next - maxVisible + 1;
           return offset;
         });
         return next;
       });
     },
-    [currentMaxItems, effectiveMaxVisible, setCurrentCursor, setCurrentScrollOffset],
+    [currentMaxItems, maxVisible, setCurrentCursor, setCurrentScrollOffset],
   );
 
   // Clamp cursors when lists change
@@ -191,13 +201,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       return () => clearTimeout(timer);
     }
   }, [stale.length, loading, showStaleNudge]);
-
-  // Cycle to next available column
-  const cycleColumn = useCallback(() => {
-    const idx = availableColumns.indexOf(focusColumn);
-    const next = availableColumns[(idx + 1) % availableColumns.length];
-    setFocusColumn(next);
-  }, [availableColumns, focusColumn]);
 
   const doRefresh = useCallback(() => {
     setSelected(new Set());
@@ -244,24 +247,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
             description: "Configure your developer identity (git + GitHub)",
             action: () => setRoute({ page: "setup" }),
           },
-          // TODO: unhide mosh button once UDP ports are exposed on VPS
-          // {
-          //   key: "m",
-          //   label: `${moshEnabled ? "☑" : "☐"} Mosh`,
-          //   description: "Resilient connection — survives Wi-Fi drops, roaming, and high latency",
-          //   action: () => {
-          //     if (moshEnabled) {
-          //       setMoshEnabled(false);
-          //       saveConfigField("NPDEV_MOSH", "off");
-          //     } else if (isMoshInstalled()) {
-          //       setMoshEnabled(true);
-          //       saveConfigField("NPDEV_MOSH", "on");
-          //     } else {
-          //       setRoute({ page: "mosh-install" });
-          //     }
-          //   },
-          //   active: moshEnabled,
-          // },
           {
             key: "u",
             label: "Update",
@@ -315,7 +300,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (key.return) {
-        // Select the highlighted result
         if (focusColumn === "sessions" && filteredMine.length > 0 && sessionCursor < filteredMine.length) {
           const s = filteredMine[sessionCursor];
           setSearchActive(false);
@@ -338,8 +322,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
       if (key.downArrow) {
-        // Navigate within filtered results, cross from sessions to team
-        if (focusColumn === "sessions" && sessionCursor >= filteredMine.length - 1 && filteredTeam.length > 0) {
+        if (focusColumn === "sessions" && sessionCursor >= filteredMine.length - 1 && hasFilteredTeam) {
           setFocusColumn("team");
           setTeamCursor(0);
           setTeamScrollOffset(0);
@@ -352,15 +335,14 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         if (focusColumn === "team" && teamCursor === 0 && filteredMine.length > 0) {
           setFocusColumn("sessions");
           setSessionCursor(filteredMine.length - 1);
-          setSessionScrollOffset(Math.max(0, filteredMine.length - effectiveMaxVisible));
+          setSessionScrollOffset(Math.max(0, filteredMine.length - maxVisible));
         } else {
           moveCursor(-1);
         }
         return;
       }
-      // Tab to switch between sessions and team results
       if (key.tab) {
-        if (focusColumn === "sessions" && filteredTeam.length > 0) {
+        if (focusColumn === "sessions" && hasFilteredTeam) {
           setFocusColumn("team");
           setTeamCursor(0);
           setTeamScrollOffset(0);
@@ -371,7 +353,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         }
         return;
       }
-      // Regular character input → append to search query
       if (input && !key.ctrl && !key.meta && input.length === 1 && input.charCodeAt(0) >= 32) {
         setSearchQuery(q => q + input);
         setSessionCursor(0);
@@ -427,12 +408,10 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
     if (key.tab) {
       if (cursorArea === "actions") {
         setCursorArea("sessions");
-        // Focus first available column
         setFocusColumn(availableColumns[0]);
       } else {
         const idx = availableColumns.indexOf(focusColumn);
         if (idx >= availableColumns.length - 1) {
-          // Wrap to actions
           setCursorArea("actions");
         } else {
           setFocusColumn(availableColumns[idx + 1]);
@@ -465,27 +444,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
     // Navigation in column area
     if (cursorArea === "sessions") {
-      // Up/Down navigation with cross-section logic for normal layout
+      // Up/Down navigation
       if (key.downArrow || input === "j") {
-        // In normal layout, down at bottom of sessions → team
-        if (layout === "normal" && focusColumn === "sessions" && sessionCursor >= filteredMine.length - 1 && hasFilteredTeam) {
-          setFocusColumn("team");
-          setTeamCursor(0);
-          setTeamScrollOffset(0);
-          return;
-        }
         moveCursor(1);
         return;
       }
       if (key.upArrow || (input === "k" && focusColumn === "repos")) {
-        // In normal layout, up at top of team → sessions
-        if (layout === "normal" && focusColumn === "team" && teamCursor === 0 && filteredMine.length > 0) {
-          setFocusColumn("sessions");
-          setSessionCursor(filteredMine.length - 1);
-          setSessionScrollOffset(Math.max(0, filteredMine.length - maxVisibleStacked));
-          return;
-        }
-        // In repos column, k is vim up (no kill conflict)
         if (currentCursor === 0) {
           setCursorArea("actions");
         } else {
@@ -507,33 +471,13 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         return;
       }
 
-      // Left/Right: move between columns
+      // Left/Right: move between columns (viewport auto-scrolls)
       if (key.leftArrow || key.rightArrow) {
-        if (layout === "narrow") {
-          // In narrow layout, left/right switch tabs
-          const idx = availableColumns.indexOf(focusColumn);
-          if (key.rightArrow) {
-            setFocusColumn(availableColumns[(idx + 1) % availableColumns.length]);
-          } else {
-            setFocusColumn(availableColumns[(idx - 1 + availableColumns.length) % availableColumns.length]);
-          }
-        } else if (layout === "normal") {
-          // Normal layout: left side = sessions/team, right side = repos
-          // Left/Right toggles between left side and repos
-          if (key.rightArrow && (focusColumn === "sessions" || focusColumn === "team") && hasRepos && !searchActive) {
-            setLastLeftColumn(focusColumn);
-            setFocusColumn("repos");
-          } else if (key.leftArrow && focusColumn === "repos") {
-            setFocusColumn(lastLeftColumn);
-          }
-        } else {
-          // Wide layout: all columns side by side
-          const idx = availableColumns.indexOf(focusColumn);
-          if (key.rightArrow && idx < availableColumns.length - 1) {
-            setFocusColumn(availableColumns[idx + 1]);
-          } else if (key.leftArrow && idx > 0) {
-            setFocusColumn(availableColumns[idx - 1]);
-          }
+        const idx = availableColumns.indexOf(focusColumn);
+        if (key.rightArrow && idx < availableColumns.length - 1) {
+          setFocusColumn(availableColumns[idx + 1]);
+        } else if (key.leftArrow && idx > 0) {
+          setFocusColumn(availableColumns[idx - 1]);
         }
         return;
       }
@@ -686,7 +630,7 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           npdevUser={npdevUser}
           version={version}
           cols={cols}
-          layout={layout}
+          rows={rows}
           isOnVPS={isOnVPS}
         />
         <Box flexDirection="column" flexGrow={1} paddingX={1}>
@@ -700,170 +644,91 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
   const panelFocusedRepos = cursorArea === "sessions" && focusColumn === "repos";
   const panelFocusedTeam = cursorArea === "sessions" && focusColumn === "team";
 
-  // Determine number of visible columns for wide layout
-  const showRepos = hasRepos && !searchActive;
-  const hasFilteredTeam = filteredTeam.length > 0;
-  const visibleColumnCount = 1 + (showRepos ? 1 : 0) + (hasFilteredTeam ? 1 : 0);
+  // --- Viewport-based column rendering ---
+  const visibleColumns = availableColumns.slice(
+    viewport.viewportStart,
+    viewport.viewportStart + viewport.visibleFullCount,
+  );
 
-  const sessionPanels = isEmpty && !showRepos ? (
-    <Box flexGrow={1} paddingY={1}>
-      <EmptyState />
-    </Box>
-  ) : layout === "wide" ? (
-    // Wide layout: up to 3 columns side by side
-    <Box flexDirection="row" gap={2} flexGrow={1}>
-      {filteredMine.length > 0 ? (
-        <SessionList
-          sessions={filteredMine}
-          repos={repos}
-          selectedIndex={focusColumn === "sessions" ? sessionCursor : -1}
-          selectable={panelFocusedSessions}
-          focused={panelFocusedSessions}
-          layout={layout}
-          width={Math.floor(contentWidth / visibleColumnCount) - 2}
-          scrollOffset={focusColumn === "sessions" ? sessionScrollOffset : 0}
-          maxVisible={maxVisible}
-          selected={selected}
-        />
-      ) : (
-        !searchActive && (
-          <Box flexGrow={1} paddingY={1}>
-            <EmptyState />
-          </Box>
-        )
-      )}
-      {showRepos && (
-        <RepoList
-          repos={repos}
-          sessions={sessions}
-          selectedIndex={repoCursor}
-          focused={panelFocusedRepos}
-          width={Math.floor(contentWidth / visibleColumnCount) - 2}
-          scrollOffset={repoScrollOffset}
-          maxVisible={maxVisible}
-        />
-      )}
-      {hasFilteredTeam && (
-        <TeamSection
-          sessions={filteredTeam}
-          repos={repos}
-          selectedIndex={focusColumn === "team" ? teamCursor : -1}
-          selectable={panelFocusedTeam}
-          focused={panelFocusedTeam}
-          layout={layout}
-          width={Math.floor(contentWidth / visibleColumnCount) - 2}
-          scrollOffset={focusColumn === "team" ? teamScrollOffset : 0}
-          maxVisible={maxVisible}
-        />
-      )}
-    </Box>
-  ) : layout === "normal" ? (
-    // Normal layout: 2 columns — [Sessions/Team stacked] [Repos]
-    <Box flexDirection="row" gap={2} flexGrow={1}>
-      <Box flexDirection="column" flexGrow={1}>
-        {filteredMine.length > 0 ? (
+  // Left peek: column just before viewportStart
+  const leftPeekColumn = viewport.hasLeftPeek
+    ? availableColumns[viewport.viewportStart - 1]
+    : null;
+  // Right peek: column just after the last visible
+  const rightPeekColumn = viewport.hasRightPeek
+    ? availableColumns[viewport.viewportStart + viewport.visibleFullCount]
+    : null;
+
+  const renderColumn = (col: FocusColumn) => {
+    switch (col) {
+      case "sessions":
+        return filteredMine.length > 0 ? (
           <SessionList
+            key="sessions"
             sessions={filteredMine}
             repos={repos}
             selectedIndex={focusColumn === "sessions" ? sessionCursor : -1}
             selectable={panelFocusedSessions}
             focused={panelFocusedSessions}
-            layout={layout}
-            width={showRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
-            scrollOffset={sessionScrollOffset}
-            maxVisible={hasFilteredTeam ? maxVisibleStacked : maxVisible}
+            width={viewport.columnWidth}
+            scrollOffset={focusColumn === "sessions" ? sessionScrollOffset : 0}
+            maxVisible={maxVisible}
             selected={selected}
           />
         ) : (
           !searchActive && (
-            <Box flexGrow={1} paddingY={1}>
+            <Box key="sessions" flexGrow={1} paddingY={1}>
               <EmptyState />
             </Box>
           )
-        )}
-        {hasFilteredTeam && (
+        );
+      case "repos":
+        return (
+          <RepoList
+            key="repos"
+            repos={repos}
+            sessions={sessions}
+            selectedIndex={repoCursor}
+            focused={panelFocusedRepos}
+            width={viewport.columnWidth}
+            scrollOffset={repoScrollOffset}
+            maxVisible={maxVisible}
+          />
+        );
+      case "team":
+        return (
           <TeamSection
+            key="team"
             sessions={filteredTeam}
             repos={repos}
             selectedIndex={focusColumn === "team" ? teamCursor : -1}
             selectable={panelFocusedTeam}
             focused={panelFocusedTeam}
-            layout={layout}
-            width={showRepos ? Math.floor(contentWidth / 2) - 2 : contentWidth}
-            scrollOffset={teamScrollOffset}
-            maxVisible={maxVisibleStacked}
+            width={viewport.columnWidth}
+            scrollOffset={focusColumn === "team" ? teamScrollOffset : 0}
+            maxVisible={maxVisible}
           />
-        )}
-      </Box>
-      {showRepos && (
-        <RepoList
-          repos={repos}
-          sessions={sessions}
-          selectedIndex={repoCursor}
-          focused={panelFocusedRepos}
-          width={Math.floor(contentWidth / 2) - 2}
-          scrollOffset={repoScrollOffset}
-          maxVisible={maxVisible}
-        />
-      )}
+        );
+    }
+  };
+
+  const sessionPanels = isEmpty && !showRepos ? (
+    <Box flexGrow={1} paddingY={1}>
+      <EmptyState />
     </Box>
   ) : (
-    // Narrow layout: tabs
-    <Box flexDirection="column" flexGrow={1}>
-      <TabBar
-        activeTab={narrowTab}
-        sessionCount={filteredMine.length}
-        teamCount={filteredTeam.length}
-        repoCount={repos.length}
-      />
-      {narrowTab === "sessions" ? (
-        filteredMine.length > 0 ? (
-          <SessionList
-            sessions={filteredMine}
-            repos={repos}
-            selectedIndex={cursorArea === "sessions" ? sessionCursor : -1}
-            selectable={panelFocusedSessions}
-            focused={panelFocusedSessions}
-            layout={layout}
-            width={contentWidth}
-            scrollOffset={sessionScrollOffset}
-            maxVisible={maxVisible}
-            selected={selected}
-          />
-        ) : (
-          <Box flexGrow={1} paddingY={1}>
-            <EmptyState />
-          </Box>
-        )
-      ) : narrowTab === "team" ? (
-        <TeamSection
-          sessions={filteredTeam}
-          repos={repos}
-          selectedIndex={cursorArea === "sessions" ? teamCursor : -1}
-          selectable={panelFocusedTeam}
-          focused={panelFocusedTeam}
-          layout={layout}
-          width={contentWidth}
-          scrollOffset={teamScrollOffset}
-          maxVisible={maxVisible}
-        />
-      ) : (
-        hasRepos && (
-          <RepoList
-            repos={repos}
-            sessions={sessions}
-            selectedIndex={repoCursor}
-            focused={panelFocusedRepos}
-            width={contentWidth}
-            scrollOffset={repoScrollOffset}
-            maxVisible={maxVisible}
-          />
-        )
+    <Box flexDirection="row" flexGrow={1}>
+      {leftPeekColumn && (
+        <PeekSliver label={COLUMN_LABELS[leftPeekColumn]} side="left" />
+      )}
+      {visibleColumns.map(renderColumn)}
+      {rightPeekColumn && (
+        <PeekSliver label={COLUMN_LABELS[rightPeekColumn]} side="right" />
       )}
     </Box>
   );
 
-  // Context-sensitive description for the description area when browsing columns
+  // Context-sensitive description
   let contextDescription: string | undefined;
   if (cursorArea === "sessions" && !searchActive) {
     if (focusColumn === "sessions" && filteredMine.length > 0 && sessionCursor < filteredMine.length) {
@@ -906,7 +771,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         version={version}
         cols={cols}
         rows={rows}
-        layout={layout}
         isOnVPS={isOnVPS}
       />
       <Box paddingX={1} paddingBottom={1}>
