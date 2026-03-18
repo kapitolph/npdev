@@ -94,8 +94,10 @@ export async function checkVersion(): Promise<VersionInfo> {
     let latest: string | null = null;
     if (latestStable) {
       if (channel === "nightly") {
-        // On nightly, always show stable as available (enables downgrade)
-        latest = latestStable.version;
+        // On nightly, only show stable update if stable is newer than the nightly base
+        if (isNewer(latestStable.version, base)) {
+          latest = latestStable.version;
+        }
       } else if (isNewer(latestStable.version, base)) {
         latest = latestStable.version;
       }
