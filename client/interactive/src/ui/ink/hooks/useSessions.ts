@@ -9,6 +9,8 @@ interface UseSessionsResult {
   stale: SessionData[];
   loading: boolean;
   refresh: () => void;
+  removeSession: (name: string) => void;
+  silentRefresh: () => Promise<void>;
 }
 
 export function useSessions(machine: Machine, npdevUser: string): UseSessionsResult {
@@ -36,5 +38,14 @@ export function useSessions(machine: Machine, npdevUser: string): UseSessionsRes
 
   const stale = mine.filter((s) => businessDaysElapsed(s.last_activity) > STALE_BUSINESS_DAYS);
 
-  return { sessions, mine, team, stale, loading, refresh: load };
+  const removeSession = useCallback((name: string) => {
+    setSessions((prev) => prev.filter((s) => s.name !== name));
+  }, []);
+
+  const silentRefresh = useCallback(async () => {
+    const data = await fetchSessions(machine);
+    setSessions(data);
+  }, [machine.host]);
+
+  return { sessions, mine, team, stale, loading, refresh: load, removeSession, silentRefresh };
 }

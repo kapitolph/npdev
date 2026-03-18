@@ -78,7 +78,7 @@ interface Props {
 }
 
 export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, onAction }: Props) {
-  const { sessions, mine, team, stale, loading, refresh } = useSessions(machine, npdevUser);
+  const { sessions, mine, team, stale, loading, refresh, removeSession, silentRefresh } = useSessions(machine, npdevUser);
   const { repos, loading: reposLoading, refresh: refreshRepos } = useRepos(machine);
   const { diary, refresh: refreshDiary } = useDiary(machine);
   const { cols, rows } = useTerminalSize();
@@ -251,10 +251,11 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
 
   const endSession = useCallback(
     async (name: string) => {
+      removeSession(name);
       await sshExec(machine, `bash ~/.vps/session.sh end '${name}'`);
-      refresh();
+      silentRefresh();
     },
-    [machine, refresh],
+    [machine, removeSession, silentRefresh],
   );
 
   // Button definitions
