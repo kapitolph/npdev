@@ -373,6 +373,99 @@ cmd_login() {
   set_active_profile "$name"
 }
 
+cmd_refresh() {
+  local name="${1:-}"
+
+  # If no name given, use active profile
+  if [[ -z "$name" ]]; then
+    name=$(current_profile)
+    [[ -z "$name" ]] && die "No active profile. Specify a name: ccp refresh <name>"
+  fi
+
+  validate_dev "$name"
+
+  local creds_file="$DEVELOPERS_DIR/${name}.claude-credentials.json"
+  [[ -f "$creds_file" ]] || die "No saved credentials for '$name'. Run: ccp login $name"
+
+  local refresh_token
+  refresh_token=$(jq -r '.claudeAiOauth.refreshToken // empty' "$creds_file" 2>/dev/null)
+  [[ -z "$refresh_token" ]] && die "No refresh token found for '$name'. Run: ccp login $name"
+
+  local CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+  local TOKEN_URL="https://platform.claude.com/v1/oauth/token"
+
+  $JSON_MODE || echo "Refreshing token for '$name'..."
+
+  local response
+  response=$(curl -sS -X POST "$TOKEN_URL" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+      --arg rt "$refresh_token" \
+      --arg client_id "$CLIENT_ID" \
+      '{
+        grant_type: "refresh_token",
+        refresh_token: $rt,
+        client_id: $client_id
+      }')" 2>&1)
+
+  # Check for error
+  if ! echo "$response" | jq -e '.access_token' >/dev/null 2>&1; then
+    local err_msg
+    err_msg=$(echo "$response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null || echo "$response")
+    die "Token refresh failed: $err_msg"
+  fi
+
+  # Extract tokens
+  local access_token new_refresh_token expires_in
+  access_token=$(echo "$response" | jq -r '.access_token')
+  new_refresh_token=$(echo "$response" | jq -r '.refresh_token // empty')
+  expires_in=$(echo "$response" | jq -r '.expires_in // 86400')
+
+  # Keep the old refresh token if the server didn't issue a new one
+  [[ -z "$new_refresh_token" ]] && new_refresh_token="$refresh_token"
+
+  # Calculate expiry timestamp in milliseconds
+  local now_ms expires_at
+  now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
+  expires_at=$((now_ms + expires_in * 1000))
+
+  # Build credentials JSON
+  local creds
+  creds=$(jq -n \
+    --arg at "$access_token" \
+    --arg rt "$new_refresh_token" \
+    --argjson ea "$expires_at" \
+    '{
+      claudeAiOauth: {
+        accessToken: $at,
+        refreshToken: $rt,
+        expiresAt: $ea
+      }
+    }')
+
+  # Write to saved profile
+  printf '%s' "$creds" | jq . > "$creds_file"
+  chmod 600 "$creds_file"
+
+  # If this is the active profile, also update live credentials
+  local current
+  current=$(current_profile)
+  if [[ "$current" == "$name" ]]; then
+    printf '%s' "$creds" | jq . > "$CREDENTIALS_FILE"
+    chmod 600 "$CREDENTIALS_FILE"
+  fi
+
+  local status
+  status=$(token_status "$creds_file")
+
+  if $JSON_MODE; then
+    jq -n --arg profile "$name" --arg token_status "$status" \
+      '{"ok":true,"action":"refreshed","profile":$profile,"token_status":$token_status}'
+  else
+    echo "Refreshed token for '$name' — $status"
+  fi
+}
+
 cmd_logout() {
   local name="${1:-}"
 
@@ -555,6 +648,7 @@ cmd_help() {
       {"name":"next","usage":"ccp next","description":"Cycle to next saved profile"},
       {"name":"login","usage":"ccp login <name>","description":"OAuth login and save credentials"},
       {"name":"save","usage":"ccp save <name>","description":"Save current credentials to a profile"},
+      {"name":"refresh","usage":"ccp refresh [name]","description":"Refresh an expired token using the stored refresh token"},
       {"name":"logout","usage":"ccp logout [name]","description":"Remove saved credentials for a profile"},
       {"name":"help","usage":"ccp help","description":"Show help"}
     ]}'
@@ -574,6 +668,7 @@ Commands:
   <number>      Switch to profile by number (from list)
   next          Cycle to next saved profile
   login <name>  OAuth login and save credentials
+  refresh [name] Refresh token using stored refresh token (default: active profile)
   logout [name] Remove saved credentials (default: active profile)
   save <name>   Save current credentials to a profile
   whoami        Show current profile details
@@ -620,6 +715,7 @@ case "${1:-}" in
   next)         cmd_next ;;
   whoami)       cmd_whoami ;;
   login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name>"; cmd_login "$1" ;;
+  refresh)      shift; cmd_refresh "${1:-}" ;;
   logout)       shift; cmd_logout "${1:-}" ;;
   save)         shift; [[ $# -lt 1 ]] && die "Usage: ccp save <name> [--force]"; cmd_save "$1" "${2:-}" ;;
   use|switch)   shift; [[ $# -lt 1 ]] && die "Usage: ccp use <name>"; cmd_use "$1" ;;

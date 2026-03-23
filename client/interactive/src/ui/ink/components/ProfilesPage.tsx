@@ -105,8 +105,16 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     }
     setActionInProgress(true);
     try {
-      await sshExec(machine, `bash ~/.vps/claude-profile.sh save '${active.name}' --force --json`);
-      showStatus(`Refreshed token for ${active.name}`);
+      const { stdout } = await sshExec(
+        machine,
+        `bash ~/.vps/claude-profile.sh refresh '${active.name}' --json`,
+      );
+      const parsed = JSON.parse(stdout);
+      showStatus(
+        parsed.ok
+          ? `Refreshed token for ${active.name} — ${parsed.token_status}`
+          : `Refresh failed: ${parsed.error || "unknown error"}`,
+      );
       refresh();
     } catch {
       showStatus("Token refresh failed");
