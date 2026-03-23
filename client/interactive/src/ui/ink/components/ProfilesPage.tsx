@@ -17,9 +17,7 @@ interface Props {
 type LoginModal =
   | { profileName: string; email: string; phase: "confirm" }
   | { profileName: string; email: string; phase: "starting" }
-  | { profileName: string; email: string; phase: "has-url"; url: string; code: string }
-  | { profileName: string; email: string; phase: "submitting" }
-  | { profileName: string; email: string; phase: "completing" }
+  | { profileName: string; email: string; phase: "waiting"; url: string }
   | { profileName: string; email: string; phase: "done"; message: string }
   | { profileName: string; email: string; phase: "error"; message: string };
 
@@ -148,13 +146,11 @@ export function ProfilesPage({ machine, onBack }: Props) {
     }
   }, [loginModal, machine]);
 
-  // --- Login: poll proxy status for URL and completion ---
+  // --- Login: poll proxy status ---
 
   useEffect(() => {
     const phase = loginModal?.phase;
-    if (!loginModal || (phase !== "starting" && phase !== "completing")) return;
-    // Only poll in "starting" (waiting for URL) and "completing" (waiting for process exit after submit)
-    // Don't poll in "has-url" — user is typing the code
+    if (!loginModal || (phase !== "starting" && phase !== "waiting")) return;
 
     const { profileName, email } = loginModal;
 
@@ -165,11 +161,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
         if (!parsed.ok) return;
 
         if (parsed.phase === "has-url" && phase === "starting") {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          setLoginModal({ profileName, email, phase: "has-url", url: parsed.url, code: "" });
+          setLoginModal({ profileName, email, phase: "waiting", url: parsed.url });
         } else if (parsed.phase === "done") {
           if (pollRef.current) {
             clearInterval(pollRef.current);
@@ -191,7 +183,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
               message: parsed.output?.trim() || "Login completed but failed to save credentials",
             });
           }
-          // Cleanup
           await sshExec(machine, `${PROXY} cancel`).catch(() => {});
         }
       } catch {
@@ -199,7 +190,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
       }
     };
 
-    pollRef.current = setInterval(poll, 1500);
+    pollRef.current = setInterval(poll, 2000);
     poll();
 
     return () => {
@@ -208,31 +199,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
         pollRef.current = null;
       }
     };
-  }, [loginModal?.phase === "starting" || loginModal?.phase === "completing" ? loginModal.phase : null, machine, refresh]);
-
-  // --- Login: submit auth code ---
-
-  const handleLoginSubmit = useCallback(async () => {
-    if (!loginModal || loginModal.phase !== "has-url") return;
-    const code = loginModal.code.trim();
-    if (!code) return;
-
-    const { profileName, email } = loginModal;
-    setLoginModal({ profileName, email, phase: "submitting" });
-
-    try {
-      const { stdout } = await sshExec(machine, `${PROXY} submit '${code}'`);
-      const parsed = JSON.parse(stdout);
-      if (!parsed.ok) {
-        setLoginModal({ profileName, email, phase: "error", message: parsed.error || "Submit failed" });
-        return;
-      }
-      // Move to completing phase — polling will pick up the result
-      setLoginModal({ profileName, email, phase: "completing" });
-    } catch {
-      setLoginModal({ profileName, email, phase: "error", message: "Failed to submit code" });
-    }
-  }, [loginModal, machine]);
+  }, [loginModal?.phase === "starting" || loginModal?.phase === "waiting" ? loginModal.phase : null, machine, refresh]);
 
   // --- Login: cancel ---
 
@@ -256,26 +223,8 @@ export function ProfilesPage({ machine, onBack }: Props) {
         return;
       }
 
-      // Confirm phase: Enter to start
       if (key.return && loginModal.phase === "confirm") {
         handleLoginStart();
-        return;
-      }
-
-      // Has-URL phase: text input for auth code
-      if (loginModal.phase === "has-url") {
-        if (key.return) {
-          handleLoginSubmit();
-          return;
-        }
-        if (key.backspace || key.delete) {
-          setLoginModal((m) => (m?.phase === "has-url" ? { ...m, code: m.code.slice(0, -1) } : m));
-          return;
-        }
-        if (input && !key.ctrl && !key.meta) {
-          setLoginModal((m) => (m?.phase === "has-url" ? { ...m, code: m.code + input } : m));
-          return;
-        }
         return;
       }
 
@@ -384,13 +333,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
               <Text color={theme.accent}>esc</Text> cancel
             </>
           );
-        case "has-url":
-          return (
-            <>
-              <Text color={theme.accent}>{"\u21B5"}</Text> submit code{" \u00b7 "}
-              <Text color={theme.accent}>esc</Text> cancel
-            </>
-          );
         case "done":
         case "error":
           return (
@@ -435,40 +377,25 @@ export function ProfilesPage({ machine, onBack }: Props) {
               <>
                 <Text color={theme.overlay1}>This will start OAuth login for this profile.</Text>
                 <Text color={theme.overlay1}>
-                  A URL will appear — copy it and open in your browser.
+                  A URL will appear — open it in your browser and log in.
                 </Text>
-                <Text color={theme.overlay1}>Then paste the authorization code back here.</Text>
+                <Text color={theme.overlay1}>Authentication is detected automatically.</Text>
               </>
             )}
 
             {loginModal.phase === "starting" && <Spinner label="Starting login..." />}
 
-            {loginModal.phase === "has-url" && (
+            {loginModal.phase === "waiting" && (
               <>
-                <Text color={theme.overlay1}>1. Open this URL in your browser:</Text>
+                <Text color={theme.overlay1}>Open this URL in your browser and log in:</Text>
                 <Text> </Text>
                 <Text color={theme.lavender} bold>
                   {loginModal.url}
                 </Text>
                 <Text> </Text>
-                <Text color={theme.overlay1}>2. Paste the authorization code below:</Text>
-                <Box marginTop={1}>
-                  <Box
-                    borderStyle="round"
-                    borderColor={theme.accent}
-                    paddingX={1}
-                    width={modalWidth - 6}
-                  >
-                    <Text color={theme.text}>{loginModal.code}</Text>
-                    <Text color={theme.accent}>{"\u258C"}</Text>
-                  </Box>
-                </Box>
+                <Spinner label="Waiting for authentication..." />
               </>
             )}
-
-            {loginModal.phase === "submitting" && <Spinner label="Submitting code..." />}
-
-            {loginModal.phase === "completing" && <Spinner label="Completing login..." />}
 
             {loginModal.phase === "done" && <Text color={theme.green}>{loginModal.message}</Text>}
 
