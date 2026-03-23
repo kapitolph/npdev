@@ -1,3 +1,4 @@
+import { openSync, writeSync, closeSync } from "node:fs";
 import { Box, Text, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sshExec } from "../../../lib/ssh";
@@ -17,7 +18,7 @@ interface Props {
 type LoginModal =
   | { profileName: string; email: string; phase: "confirm" }
   | { profileName: string; email: string; phase: "starting" }
-  | { profileName: string; email: string; phase: "waiting"; url: string }
+  | { profileName: string; email: string; phase: "waiting"; url: string; copied: boolean }
   | { profileName: string; email: string; phase: "done"; message: string }
   | { profileName: string; email: string; phase: "error"; message: string };
 
@@ -161,7 +162,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
         if (!parsed.ok) return;
 
         if (parsed.phase === "has-url" && phase === "starting") {
-          setLoginModal({ profileName, email, phase: "waiting", url: parsed.url });
+          setLoginModal({ profileName, email, phase: "waiting", url: parsed.url, copied: false });
         } else if (parsed.phase === "done") {
           if (pollRef.current) {
             clearInterval(pollRef.current);
@@ -225,6 +226,20 @@ export function ProfilesPage({ machine, onBack }: Props) {
 
       if (key.return && loginModal.phase === "confirm") {
         handleLoginStart();
+        return;
+      }
+
+      // Waiting phase: c to copy URL to clipboard via OSC 52
+      if (loginModal.phase === "waiting" && input === "c") {
+        try {
+          const b64 = Buffer.from(loginModal.url).toString("base64");
+          const fd = openSync("/dev/tty", "w");
+          writeSync(fd, `\x1b]52;c;${b64}\x07`);
+          closeSync(fd);
+        } catch {
+          // /dev/tty not available — ignore
+        }
+        setLoginModal({ ...loginModal, copied: true });
         return;
       }
 
@@ -341,6 +356,13 @@ export function ProfilesPage({ machine, onBack }: Props) {
               <Text color={theme.accent}>esc</Text> back
             </>
           );
+        case "waiting":
+          return (
+            <>
+              <Text color={theme.accent}>c</Text> copy URL{" \u00b7 "}
+              <Text color={theme.accent}>esc</Text> cancel
+            </>
+          );
         default:
           return (
             <>
@@ -393,6 +415,9 @@ export function ProfilesPage({ machine, onBack }: Props) {
                   {loginModal.url}
                 </Text>
                 <Text> </Text>
+                {loginModal.copied && (
+                  <Text color={theme.green}>Copied to clipboard</Text>
+                )}
                 <Spinner label="Waiting for authentication..." />
               </>
             )}
