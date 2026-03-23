@@ -14,6 +14,7 @@ import { Header } from "./components/Header";
 import { MoshInstallPage } from "./components/MoshInstallPage";
 import { NewSessionPage } from "./components/NewSessionPage";
 import { PeekSliver } from "./components/PeekSliver";
+import { ProfilesPage } from "./components/ProfilesPage";
 import { RepoDetailPage } from "./components/RepoDetailPage";
 import { RepoList } from "./components/RepoList";
 import { SessionList } from "./components/SessionList";
@@ -42,7 +43,8 @@ type Route =
   | { page: "setup" }
   | { page: "upload" }
   | { page: "mosh-install" }
-  | { page: "diary-detail"; diaryType: "3h" | "eod" };
+  | { page: "diary-detail"; diaryType: "3h" | "eod" }
+  | { page: "profiles" };
 
 type DashboardMode =
   | { mode: "normal" }
@@ -55,6 +57,7 @@ export type AppAction =
   | { type: "new-session-in-repo"; sessionName: string; repoPath: string }
   | { type: "cd-to-repo"; repoPath: string }
   | { type: "join-team"; sessionName: string }
+  | { type: "ccp-login"; profileName: string }
   | { type: "update-done" }
   | { type: "exit" };
 
@@ -309,6 +312,12 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
           },
         ]
       : []),
+    {
+      key: "p",
+      label: "Profiles",
+      description: "Manage agent credential profiles",
+      action: () => setRoute({ page: "profiles" }),
+    },
     {
       key: "/",
       label: "Search",
@@ -719,6 +728,17 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
         type={route.diaryType}
         initialEntry={initialEntry}
         onBack={() => setRoute({ page: "dashboard" })}
+      />
+    );
+  }
+
+  // --- Route: Profiles ---
+  if (route.page === "profiles") {
+    return (
+      <ProfilesPage
+        machine={machine}
+        onBack={() => setRoute({ page: "dashboard" })}
+        onAction={onAction}
       />
     );
   }
