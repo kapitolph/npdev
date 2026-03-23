@@ -12,10 +12,19 @@ interface Props {
   onBack: () => void;
 }
 
-type LoginModal = {
-  profileName: string;
-  email: string;
-};
+type LoginModal =
+  | { profileName: string; email: string; phase: "confirm" }
+  | { profileName: string; email: string; phase: "starting" }
+  | {
+      profileName: string;
+      email: string;
+      phase: "waiting";
+      pid: number;
+      logFile: string;
+      url: string | null;
+    }
+  | { profileName: string; email: string; phase: "done"; message: string }
+  | { profileName: string; email: string; phase: "error"; message: string };
 
 export function ProfilesPage({ machine, onBack }: Props) {
   const theme = useTheme();
@@ -28,11 +37,10 @@ export function ProfilesPage({ machine, onBack }: Props) {
   const [actionInProgress, setActionInProgress] = useState(false);
   const [loginModal, setLoginModal] = useState<LoginModal | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Each profile takes ~3 lines
   const maxVisible = Math.max(2, Math.floor((rows - 12) / 3));
 
-  // Clamp cursor when profiles change
   useEffect(() => {
     setProfileCursor((c) => Math.min(c, Math.max(0, profiles.length - 1)));
   }, [profiles.length]);
@@ -49,6 +57,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
   useEffect(() => {
     return () => {
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
@@ -73,7 +82,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
     if (profiles.length === 0 || actionInProgress) return;
     const profile = profiles[profileCursor];
     if (!profile || !profile.has_credentials) {
-      showStatus("No saved credentials — press l to login first");
+      showStatus("No saved credentials \u2014 press l to login first");
       return;
     }
     setActionInProgress(true);
@@ -120,14 +129,142 @@ export function ProfilesPage({ machine, onBack }: Props) {
     setActionInProgress(false);
   }, [profiles, machine, refresh, showStatus, actionInProgress]);
 
+  // --- Login: start background process ---
+
+  const handleLoginStart = useCallback(async () => {
+    if (!loginModal || loginModal.phase !== "confirm") return;
+    const { profileName, email } = loginModal;
+    setLoginModal({ profileName, email, phase: "starting" });
+
+    const logFile = `/tmp/ccp-login-${Date.now()}.log`;
+    const emailFlag = email ? ` --email '${email}'` : "";
+
+    try {
+      const { stdout } = await sshExec(
+        machine,
+        `nohup bash -c 'claude auth login${emailFlag} 2>&1' > ${logFile} 2>&1 & echo $!`,
+      );
+      const pid = parseInt(stdout.trim(), 10);
+      if (Number.isNaN(pid) || pid <= 0) {
+        setLoginModal({
+          profileName,
+          email,
+          phase: "error",
+          message: "Failed to start login process",
+        });
+        return;
+      }
+      setLoginModal({ profileName, email, phase: "waiting", pid, logFile, url: null });
+    } catch {
+      setLoginModal({ profileName, email, phase: "error", message: "Failed to start login" });
+    }
+  }, [loginModal, machine]);
+
+  // --- Login: poll for URL and completion ---
+
+  useEffect(() => {
+    if (!loginModal || loginModal.phase !== "waiting") return;
+
+    const { pid, logFile, profileName, email } = loginModal;
+
+    const poll = async () => {
+      try {
+        // Check for URL if we don't have it yet
+        const { stdout: urlOut } = await sshExec(
+          machine,
+          `grep -oE 'https?://[^ ]+' ${logFile} 2>/dev/null | head -1`,
+        );
+        const url = urlOut.trim() || null;
+        if (url) {
+          setLoginModal((m) => (m && m.phase === "waiting" ? { ...m, url } : m));
+        }
+
+        // Check if process is still running
+        const { stdout: alive } = await sshExec(
+          machine,
+          `kill -0 ${pid} 2>/dev/null && echo running || echo done`,
+        );
+
+        if (alive.trim() === "done") {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          // Save credentials for this profile
+          const { exitCode } = await sshExec(
+            machine,
+            `bash ~/.vps/claude-profile.sh save '${profileName}' --force --json`,
+          );
+          if (exitCode === 0) {
+            setLoginModal({
+              profileName,
+              email,
+              phase: "done",
+              message: `Logged in as ${profileName}`,
+            });
+            refresh();
+          } else {
+            // Check if login actually failed (no credentials written)
+            const { stdout: logContent } = await sshExec(machine, `tail -5 ${logFile} 2>/dev/null`);
+            setLoginModal({
+              profileName,
+              email,
+              phase: "error",
+              message: logContent.trim() || "Login process exited without saving credentials",
+            });
+          }
+          // Cleanup log file
+          await sshExec(machine, `rm -f ${logFile}`);
+        }
+      } catch {
+        // Poll errors are non-fatal, will retry
+      }
+    };
+
+    pollRef.current = setInterval(poll, 2000);
+    // Run first poll immediately
+    poll();
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [loginModal?.phase === "waiting" ? loginModal.pid : null, machine, refresh]);
+
+  // --- Login: cancel (kill background process) ---
+
+  const handleLoginCancel = useCallback(async () => {
+    if (loginModal && loginModal.phase === "waiting") {
+      const { pid, logFile } = loginModal;
+      await sshExec(machine, `kill ${pid} 2>/dev/null; rm -f ${logFile}`).catch(() => {});
+    }
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setLoginModal(null);
+    refresh();
+  }, [loginModal, machine, refresh]);
+
   // --- Input handling ---
 
   useInput((input, key) => {
-    // Login modal: esc or enter to dismiss
+    // Login modal input
     if (loginModal) {
-      if (key.escape || key.return) {
+      if (key.escape) {
+        handleLoginCancel();
+        return;
+      }
+      if (key.return && loginModal.phase === "confirm") {
+        handleLoginStart();
+        return;
+      }
+      if (key.return && (loginModal.phase === "done" || loginModal.phase === "error")) {
         setLoginModal(null);
         refresh();
+        return;
       }
       return;
     }
@@ -148,7 +285,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
       return;
     }
 
-    // Enter: switch to selected profile
     if (key.return) {
       handleSwitch();
       return;
@@ -158,12 +294,11 @@ export function ProfilesPage({ machine, onBack }: Props) {
     if (input === "l") {
       if (profiles.length > 0 && profiles[profileCursor]) {
         const p = profiles[profileCursor];
-        setLoginModal({ profileName: p.name, email: p.email });
+        setLoginModal({ profileName: p.name, email: p.email, phase: "confirm" });
       }
       return;
     }
 
-    // n: cycle to next profile
     if (input === "n") {
       handleNext();
       return;
@@ -181,14 +316,12 @@ export function ProfilesPage({ machine, onBack }: Props) {
       return;
     }
 
-    // f: refetch profile data
     if (input === "f") {
       refresh();
       showStatus("Refreshing...");
       return;
     }
 
-    // r: refresh/re-save active profile token
     if (input === "r") {
       handleRefreshToken();
       return;
@@ -212,10 +345,9 @@ export function ProfilesPage({ machine, onBack }: Props) {
 
   const columnWidth = Math.max(20, Math.floor((cols - 6) / 2));
 
-  // --- Login modal ---
+  // --- Login modal render ---
   if (loginModal) {
     const modalWidth = Math.min(60, cols - 4);
-    const cmd = `ccp login ${loginModal.profileName}`;
 
     return (
       <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
@@ -230,7 +362,13 @@ export function ProfilesPage({ machine, onBack }: Props) {
             width={modalWidth}
             backgroundColor={theme.panelBg}
             borderStyle="round"
-            borderColor={theme.accent}
+            borderColor={
+              loginModal.phase === "error"
+                ? theme.red
+                : loginModal.phase === "done"
+                  ? theme.green
+                  : theme.accent
+            }
             paddingX={2}
             paddingY={1}
           >
@@ -239,23 +377,56 @@ export function ProfilesPage({ machine, onBack }: Props) {
             </Text>
             {loginModal.email && <Text color={theme.subtext0}>{loginModal.email}</Text>}
             <Text> </Text>
-            <Text color={theme.overlay1}>To log in, open a separate terminal and run:</Text>
-            <Text> </Text>
-            <Box paddingX={2}>
-              <Text color={theme.lavender} bold>
-                {cmd}
-              </Text>
-            </Box>
-            <Text> </Text>
-            <Text color={theme.overlay1}>Complete the OAuth flow in your browser,</Text>
-            <Text color={theme.overlay1}>then press Esc to return and refresh.</Text>
+
+            {loginModal.phase === "confirm" && (
+              <>
+                <Text color={theme.overlay1}>This will start OAuth login for this profile.</Text>
+                <Text color={theme.overlay1}>
+                  A URL will appear — copy it and open in your browser.
+                </Text>
+              </>
+            )}
+
+            {loginModal.phase === "starting" && <Spinner label="Starting login..." />}
+
+            {loginModal.phase === "waiting" &&
+              (loginModal.url ? (
+                <>
+                  <Text color={theme.overlay1}>Open this URL in your browser:</Text>
+                  <Text> </Text>
+                  <Text color={theme.lavender} bold wrap="truncate">
+                    {loginModal.url}
+                  </Text>
+                  <Text> </Text>
+                  <Spinner label="Waiting for OAuth callback..." />
+                </>
+              ) : (
+                <Spinner label="Waiting for auth URL..." />
+              ))}
+
+            {loginModal.phase === "done" && <Text color={theme.green}>{loginModal.message}</Text>}
+
+            {loginModal.phase === "error" && <Text color={theme.red}>{loginModal.message}</Text>}
           </Box>
         </Box>
         <Box flexGrow={1} />
         <Box paddingX={1}>
           <Text color={theme.overlay0}>
-            <Text color={theme.accent}>esc</Text> back{" \u00b7 "}
-            <Text color={theme.accent}>{"\u21B5"}</Text> back
+            {loginModal.phase === "confirm" ? (
+              <>
+                <Text color={theme.accent}>{"\u21B5"}</Text> start{" \u00b7 "}
+                <Text color={theme.accent}>esc</Text> cancel
+              </>
+            ) : loginModal.phase === "starting" || loginModal.phase === "waiting" ? (
+              <>
+                <Text color={theme.accent}>esc</Text> cancel
+              </>
+            ) : (
+              <>
+                <Text color={theme.accent}>{"\u21B5"}</Text> done{" \u00b7 "}
+                <Text color={theme.accent}>esc</Text> back
+              </>
+            )}
           </Text>
         </Box>
       </Box>
@@ -354,7 +525,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
   // --- Main render ---
   return (
     <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
-      {/* Title bar */}
       <Box paddingX={2} paddingY={1} justifyContent="space-between">
         <Text bold color={theme.accent}>
           AGENT PROFILES
@@ -374,16 +544,13 @@ export function ProfilesPage({ machine, onBack }: Props) {
         </Text>
       </Box>
 
-      {/* Status message */}
       {statusMessage && (
         <Box paddingX={2}>
           <Text color={theme.yellow}>{statusMessage}</Text>
         </Box>
       )}
 
-      {/* Content area with columns */}
       <Box flexDirection="row" flexGrow={1} paddingX={1} gap={1}>
-        {/* Claude Code column */}
         <Box
           flexDirection="column"
           width={columnWidth}
@@ -399,7 +566,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
           {renderClaudeCodeColumn()}
         </Box>
 
-        {/* Codex column */}
         <Box
           flexDirection="column"
           width={columnWidth}
@@ -418,7 +584,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
         </Box>
       </Box>
 
-      {/* Bottom status */}
       <Box paddingX={2} paddingBottom={1}>
         <Text color={theme.overlay0}>
           {actionInProgress ? (
