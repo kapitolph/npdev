@@ -1,28 +1,20 @@
-import { openSync, writeSync, closeSync } from "node:fs";
 import { Box, Text, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sshExec } from "../../../lib/ssh";
 import type { Machine } from "../../../types";
+import type { AppAction } from "../App";
 import { useTheme } from "../context/ThemeContext";
 import { useProfiles } from "../hooks/useProfiles";
 import { useTerminalSize } from "../hooks/useTerminalSize";
 import { Spinner } from "./Spinner";
 
-const PROXY = "bash ~/.vps/claude-login-proxy.sh";
-
 interface Props {
   machine: Machine;
   onBack: () => void;
+  onAction: (action: AppAction) => void;
 }
 
-type LoginModal =
-  | { profileName: string; email: string; phase: "confirm" }
-  | { profileName: string; email: string; phase: "starting" }
-  | { profileName: string; email: string; phase: "waiting"; url: string; copied: boolean }
-  | { profileName: string; email: string; phase: "done"; message: string }
-  | { profileName: string; email: string; phase: "error"; message: string };
-
-export function ProfilesPage({ machine, onBack }: Props) {
+export function ProfilesPage({ machine, onBack, onAction }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
   const { profiles, loading, refresh } = useProfiles(machine);
@@ -31,9 +23,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState(false);
-  const [loginModal, setLoginModal] = useState<LoginModal | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const maxVisible = Math.max(2, Math.floor((rows - 12) / 3));
 
@@ -53,7 +43,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
   useEffect(() => {
     return () => {
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-      if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
 
@@ -125,133 +114,9 @@ export function ProfilesPage({ machine, onBack }: Props) {
     setActionInProgress(false);
   }, [profiles, machine, refresh, showStatus, actionInProgress]);
 
-  // --- Login: start via proxy ---
-
-  const handleLoginStart = useCallback(async () => {
-    if (!loginModal || loginModal.phase !== "confirm") return;
-    const { profileName, email } = loginModal;
-    setLoginModal({ profileName, email, phase: "starting" });
-
-    try {
-      const emailArg = email ? ` '${email}'` : "";
-      const { stdout } = await sshExec(machine, `${PROXY} start${emailArg}`);
-      const parsed = JSON.parse(stdout);
-      if (!parsed.ok) {
-        setLoginModal({ profileName, email, phase: "error", message: parsed.error || "Failed to start" });
-        return;
-      }
-      // Start polling for URL
-      setLoginModal({ profileName, email, phase: "starting" });
-    } catch {
-      setLoginModal({ profileName, email, phase: "error", message: "Failed to start login" });
-    }
-  }, [loginModal, machine]);
-
-  // --- Login: poll proxy status ---
-
-  useEffect(() => {
-    const phase = loginModal?.phase;
-    if (!loginModal || (phase !== "starting" && phase !== "waiting")) return;
-
-    const { profileName, email } = loginModal;
-
-    const poll = async () => {
-      try {
-        const { stdout } = await sshExec(machine, `${PROXY} status`);
-        const parsed = JSON.parse(stdout);
-        if (!parsed.ok) return;
-
-        if (parsed.phase === "has-url" && phase === "starting") {
-          setLoginModal({ profileName, email, phase: "waiting", url: parsed.url, copied: false });
-        } else if (parsed.phase === "done") {
-          if (pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-          // Save credentials for this profile
-          const { exitCode } = await sshExec(
-            machine,
-            `bash ~/.vps/claude-profile.sh save '${profileName}' --force --json`,
-          );
-          if (exitCode === 0) {
-            setLoginModal({ profileName, email, phase: "done", message: `Logged in as ${profileName}` });
-            refresh();
-          } else {
-            setLoginModal({
-              profileName,
-              email,
-              phase: "error",
-              message: parsed.output?.trim() || "Login completed but failed to save credentials",
-            });
-          }
-          await sshExec(machine, `${PROXY} cancel`).catch(() => {});
-        }
-      } catch {
-        // Poll errors are non-fatal
-      }
-    };
-
-    pollRef.current = setInterval(poll, 2000);
-    poll();
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [loginModal?.phase === "starting" || loginModal?.phase === "waiting" ? loginModal.phase : null, machine, refresh]);
-
-  // --- Login: cancel ---
-
-  const handleLoginCancel = useCallback(async () => {
-    await sshExec(machine, `${PROXY} cancel`).catch(() => {});
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    setLoginModal(null);
-    refresh();
-  }, [machine, refresh]);
-
   // --- Input handling ---
 
   useInput((input, key) => {
-    // Login modal input
-    if (loginModal) {
-      if (key.escape) {
-        handleLoginCancel();
-        return;
-      }
-
-      if (key.return && loginModal.phase === "confirm") {
-        handleLoginStart();
-        return;
-      }
-
-      // Waiting phase: c to copy URL to clipboard via OSC 52
-      if (loginModal.phase === "waiting" && input === "c") {
-        try {
-          const b64 = Buffer.from(loginModal.url).toString("base64");
-          const fd = openSync("/dev/tty", "w");
-          writeSync(fd, `\x1b]52;c;${b64}\x07`);
-          closeSync(fd);
-        } catch {
-          // /dev/tty not available — ignore
-        }
-        setLoginModal({ ...loginModal, copied: true });
-        return;
-      }
-
-      // Done/error phase: Enter to dismiss
-      if (key.return && (loginModal.phase === "done" || loginModal.phase === "error")) {
-        setLoginModal(null);
-        refresh();
-        return;
-      }
-      return;
-    }
-
     if (actionInProgress) return;
 
     if (key.escape) {
@@ -273,11 +138,11 @@ export function ProfilesPage({ machine, onBack }: Props) {
       return;
     }
 
-    // l: open login modal for selected profile
+    // l: login via interactive TTY
     if (input === "l") {
       if (profiles.length > 0 && profiles[profileCursor]) {
         const p = profiles[profileCursor];
-        setLoginModal({ profileName: p.name, email: p.email, phase: "confirm" });
+        onAction({ type: "ccp-login", profileName: p.name });
       }
       return;
     }
@@ -327,113 +192,6 @@ export function ProfilesPage({ machine, onBack }: Props) {
   };
 
   const columnWidth = Math.max(20, Math.floor((cols - 6) / 2));
-
-  // --- Login modal render ---
-  if (loginModal) {
-    const modalWidth = Math.min(60, cols - 4);
-
-    const borderColor =
-      loginModal.phase === "error"
-        ? theme.red
-        : loginModal.phase === "done"
-          ? theme.green
-          : theme.accent;
-
-    const footerHints = (() => {
-      switch (loginModal.phase) {
-        case "confirm":
-          return (
-            <>
-              <Text color={theme.accent}>{"\u21B5"}</Text> start{" \u00b7 "}
-              <Text color={theme.accent}>esc</Text> cancel
-            </>
-          );
-        case "done":
-        case "error":
-          return (
-            <>
-              <Text color={theme.accent}>{"\u21B5"}</Text> done{" \u00b7 "}
-              <Text color={theme.accent}>esc</Text> back
-            </>
-          );
-        case "waiting":
-          return (
-            <>
-              <Text color={theme.accent}>c</Text> copy URL{" \u00b7 "}
-              <Text color={theme.accent}>esc</Text> cancel
-            </>
-          );
-        default:
-          return (
-            <>
-              <Text color={theme.accent}>esc</Text> cancel
-            </>
-          );
-      }
-    })();
-
-    return (
-      <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
-        <Box flexGrow={1} />
-        <Box flexDirection="column" alignItems="center">
-          <Text color={theme.overlay0} dimColor>
-            LOGIN
-          </Text>
-          <Text> </Text>
-          <Box
-            flexDirection="column"
-            width={modalWidth}
-            backgroundColor={theme.panelBg}
-            borderStyle="round"
-            borderColor={borderColor}
-            paddingX={2}
-            paddingY={1}
-          >
-            <Text bold color={theme.text}>
-              {loginModal.profileName}
-            </Text>
-            {loginModal.email && <Text color={theme.subtext0}>{loginModal.email}</Text>}
-            <Text> </Text>
-
-            {loginModal.phase === "confirm" && (
-              <>
-                <Text color={theme.overlay1}>This will start OAuth login for this profile.</Text>
-                <Text color={theme.overlay1}>
-                  A URL will appear — open it in your browser and log in.
-                </Text>
-                <Text color={theme.overlay1}>Authentication is detected automatically.</Text>
-              </>
-            )}
-
-            {loginModal.phase === "starting" && <Spinner label="Starting login..." />}
-
-            {loginModal.phase === "waiting" && (
-              <>
-                <Text color={theme.overlay1}>Open this URL in your browser and log in:</Text>
-                <Text> </Text>
-                <Text color={theme.lavender} bold>
-                  {loginModal.url}
-                </Text>
-                <Text> </Text>
-                {loginModal.copied && (
-                  <Text color={theme.green}>Copied to clipboard</Text>
-                )}
-                <Spinner label="Waiting for authentication..." />
-              </>
-            )}
-
-            {loginModal.phase === "done" && <Text color={theme.green}>{loginModal.message}</Text>}
-
-            {loginModal.phase === "error" && <Text color={theme.red}>{loginModal.message}</Text>}
-          </Box>
-        </Box>
-        <Box flexGrow={1} />
-        <Box paddingX={1}>
-          <Text color={theme.overlay0}>{footerHints}</Text>
-        </Box>
-      </Box>
-    );
-  }
 
   // --- Claude Code column content ---
   const renderClaudeCodeColumn = () => {
