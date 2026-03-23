@@ -57,7 +57,6 @@ export type AppAction =
   | { type: "new-session-in-repo"; sessionName: string; repoPath: string }
   | { type: "cd-to-repo"; repoPath: string }
   | { type: "join-team"; sessionName: string }
-  | { type: "ccp-login"; profileName: string }
   | { type: "update-done" }
   | { type: "exit" };
 
@@ -738,7 +737,6 @@ export function App({ machine, npdevUser, version, isOnVPS, initialMoshEnabled, 
       <ProfilesPage
         machine={machine}
         onBack={() => setRoute({ page: "dashboard" })}
-        onAction={onAction}
       />
     );
   }

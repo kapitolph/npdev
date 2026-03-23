@@ -2,7 +2,6 @@ import { Box, Text, useInput } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sshExec } from "../../../lib/ssh";
 import type { Machine } from "../../../types";
-import type { AppAction } from "../App";
 import { useTheme } from "../context/ThemeContext";
 import { useProfiles } from "../hooks/useProfiles";
 import { useTerminalSize } from "../hooks/useTerminalSize";
@@ -11,10 +10,16 @@ import { Spinner } from "./Spinner";
 interface Props {
   machine: Machine;
   onBack: () => void;
-  onAction: (action: AppAction) => void;
 }
 
-export function ProfilesPage({ machine, onBack, onAction }: Props) {
+type LoginModal = {
+  profileName: string;
+  email: string;
+  phase: "instructions" | "running" | "done" | "error";
+  message?: string;
+};
+
+export function ProfilesPage({ machine, onBack }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
   const { profiles, loading, refresh } = useProfiles(machine);
@@ -23,6 +28,7 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState(false);
+  const [loginModal, setLoginModal] = useState<LoginModal | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Each profile takes ~3 lines
@@ -33,7 +39,6 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     setProfileCursor((c) => Math.min(c, Math.max(0, profiles.length - 1)));
   }, [profiles.length]);
 
-  // Show a status message that auto-clears after 2 seconds
   const showStatus = useCallback((msg: string) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     setStatusMessage(msg);
@@ -43,14 +48,12 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     }, 2000);
   }, []);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     };
   }, []);
 
-  // Move cursor with scroll
   const moveCursor = useCallback(
     (delta: number) => {
       setProfileCursor((prev) => {
@@ -66,11 +69,15 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     [profiles.length, maxVisible],
   );
 
-  // Action handlers
+  // --- Action handlers ---
+
   const handleSwitch = useCallback(async () => {
     if (profiles.length === 0 || actionInProgress) return;
     const profile = profiles[profileCursor];
-    if (!profile) return;
+    if (!profile || !profile.has_credentials) {
+      showStatus("No saved credentials — press l to login first");
+      return;
+    }
     setActionInProgress(true);
     try {
       await sshExec(machine, `bash ~/.vps/claude-profile.sh use '${profile.name}' --json`);
@@ -97,31 +104,77 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     setActionInProgress(false);
   }, [profiles.length, machine, refresh, showStatus, actionInProgress]);
 
-  const handleSave = useCallback(async () => {
-    if (profiles.length === 0 || actionInProgress) return;
-    const profile = profiles[profileCursor];
-    if (!profile) return;
+  const handleRefreshToken = useCallback(async () => {
+    if (actionInProgress) return;
+    const active = profiles.find((p) => p.active);
+    if (!active) {
+      showStatus("No active profile to refresh");
+      return;
+    }
     setActionInProgress(true);
     try {
-      await sshExec(machine, `bash ~/.vps/claude-profile.sh save '${profile.name}' --force --json`);
-      showStatus(`Saved credentials to ${profile.name}`);
+      await sshExec(machine, `bash ~/.vps/claude-profile.sh save '${active.name}' --force --json`);
+      showStatus(`Refreshed token for ${active.name}`);
       refresh();
     } catch {
-      showStatus("Save failed");
+      showStatus("Token refresh failed");
     }
     setActionInProgress(false);
-  }, [profiles, profileCursor, machine, refresh, showStatus, actionInProgress]);
+  }, [profiles, machine, refresh, showStatus, actionInProgress]);
+
+  const handleLoginStart = useCallback(async () => {
+    if (!loginModal || loginModal.phase !== "instructions") return;
+    const { profileName } = loginModal;
+    setLoginModal((m) => (m ? { ...m, phase: "running" } : m));
+    try {
+      const { exitCode } = await sshExec(
+        machine,
+        `bash ~/.vps/claude-profile.sh login '${profileName}' --json`,
+      );
+      if (exitCode === 0) {
+        setLoginModal((m) =>
+          m ? { ...m, phase: "done", message: `Logged in as ${profileName}` } : m,
+        );
+        refresh();
+      } else {
+        setLoginModal((m) =>
+          m ? { ...m, phase: "error", message: "Login failed — see terminal output" } : m,
+        );
+      }
+    } catch {
+      setLoginModal((m) => (m ? { ...m, phase: "error", message: "Login failed" } : m));
+    }
+  }, [loginModal, machine, refresh]);
+
+  // --- Input handling ---
 
   useInput((input, key) => {
+    // Login modal input
+    if (loginModal) {
+      if (key.escape) {
+        setLoginModal(null);
+        refresh();
+        return;
+      }
+      if (key.return && loginModal.phase === "instructions") {
+        handleLoginStart();
+        return;
+      }
+      if (key.return && (loginModal.phase === "done" || loginModal.phase === "error")) {
+        setLoginModal(null);
+        refresh();
+        return;
+      }
+      return;
+    }
+
     if (actionInProgress) return;
 
-    // Escape: go back
     if (key.escape) {
       onBack();
       return;
     }
 
-    // Up/Down or j/k: move cursor
     if (key.upArrow || input === "k") {
       moveCursor(-1);
       return;
@@ -137,10 +190,15 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       return;
     }
 
-    // l: login selected profile
+    // l: open login modal for selected profile
     if (input === "l") {
       if (profiles.length > 0 && profiles[profileCursor]) {
-        onAction({ type: "ccp-login", profileName: profiles[profileCursor].name });
+        const p = profiles[profileCursor];
+        setLoginModal({
+          profileName: p.name,
+          email: p.email,
+          phase: "instructions",
+        });
       }
       return;
     }
@@ -151,16 +209,28 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       return;
     }
 
-    // s: save current credentials to selected profile
+    // s: save — only on active profile
     if (input === "s") {
-      handleSave();
+      if (profiles.length === 0) return;
+      const profile = profiles[profileCursor];
+      if (!profile?.active) {
+        showStatus("Can only save on the active profile");
+        return;
+      }
+      handleRefreshToken();
       return;
     }
 
-    // r: refresh
-    if (input === "r") {
+    // f: refetch profile data
+    if (input === "f") {
       refresh();
       showStatus("Refreshing...");
+      return;
+    }
+
+    // r: refresh/re-save active profile token
+    if (input === "r") {
+      handleRefreshToken();
       return;
     }
   });
@@ -180,8 +250,92 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     return { text: profile.token_status, color: theme.overlay1 };
   };
 
-  // Column widths
   const columnWidth = Math.max(20, Math.floor((cols - 6) / 2));
+
+  // --- Login modal ---
+  if (loginModal) {
+    const modalWidth = Math.min(60, cols - 4);
+    const cmd = `ccp login ${loginModal.profileName}`;
+
+    return (
+      <Box flexDirection="column" width={cols} height={rows} backgroundColor={theme.screenBg}>
+        <Box flexGrow={1} />
+        <Box flexDirection="column" alignItems="center">
+          <Text color={theme.overlay0} dimColor>
+            LOGIN
+          </Text>
+          <Text> </Text>
+          <Box
+            flexDirection="column"
+            width={modalWidth}
+            backgroundColor={theme.panelBg}
+            borderStyle="round"
+            borderColor={
+              loginModal.phase === "error"
+                ? theme.red
+                : loginModal.phase === "done"
+                  ? theme.green
+                  : theme.accent
+            }
+            paddingX={2}
+            paddingY={1}
+          >
+            <Text bold color={theme.text}>
+              {loginModal.profileName}
+            </Text>
+            {loginModal.email && <Text color={theme.subtext0}>{loginModal.email}</Text>}
+            <Text> </Text>
+
+            {loginModal.phase === "instructions" && (
+              <>
+                <Text color={theme.overlay1}>This will start OAuth login for this profile.</Text>
+                <Text color={theme.overlay1}>
+                  A URL will be printed — copy it and open in your browser.
+                </Text>
+                <Text> </Text>
+                <Text color={theme.overlay1}>Alternatively, run in a separate terminal:</Text>
+                <Box paddingY={1}>
+                  <Text color={theme.lavender} bold>
+                    {cmd}
+                  </Text>
+                </Box>
+              </>
+            )}
+
+            {loginModal.phase === "running" && (
+              <Box paddingY={1}>
+                <Spinner label="Waiting for OAuth login to complete..." />
+              </Box>
+            )}
+
+            {loginModal.phase === "done" && <Text color={theme.green}>{loginModal.message}</Text>}
+
+            {loginModal.phase === "error" && <Text color={theme.red}>{loginModal.message}</Text>}
+          </Box>
+        </Box>
+        <Box flexGrow={1} />
+        <Box paddingX={1}>
+          <Text color={theme.overlay0}>
+            {loginModal.phase === "instructions" ? (
+              <>
+                <Text color={theme.accent}>{"\u21B5"}</Text> start login{" · "}
+                <Text color={theme.accent}>esc</Text> cancel
+              </>
+            ) : loginModal.phase === "running" ? (
+              <>
+                <Text color={theme.accent}>esc</Text> cancel
+              </>
+            ) : (
+              <>
+                <Text color={theme.accent}>{"\u21B5"}</Text> done{" · "}
+                <Text color={theme.accent}>esc</Text> back
+              </>
+            )}
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
 
   // --- Claude Code column content ---
   const renderClaudeCodeColumn = () => {
@@ -201,18 +355,14 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       );
     }
 
-    // Active profile summary
     const activeProfile = profiles.find((p) => p.active);
     const activeStatus = activeProfile ? formatTokenStatus(activeProfile) : null;
-
-    // Scrollable list
     const visibleProfiles = profiles.slice(scrollOffset, scrollOffset + maxVisible);
     const aboveCount = scrollOffset;
     const belowCount = Math.max(0, profiles.length - scrollOffset - maxVisible);
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        {/* Active profile summary */}
         {activeProfile && (
           <Box paddingY={1} paddingX={1}>
             <Text color={theme.overlay1}>
@@ -225,17 +375,14 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           </Box>
         )}
 
-        {/* Scroll up indicator */}
         {aboveCount > 0 && (
           <Box paddingX={1}>
             <Text color={theme.overlay1}>
-              {" "}
-              {"\u2191"} {aboveCount} more
+              {" \u2191"} {aboveCount} more
             </Text>
           </Box>
         )}
 
-        {/* Profile list */}
         {visibleProfiles.map((profile, i) => {
           const globalIdx = scrollOffset + i;
           const isFocused = globalIdx === profileCursor;
@@ -268,24 +415,13 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           );
         })}
 
-        {/* Scroll down indicator */}
         {belowCount > 0 && (
           <Box paddingX={1}>
             <Text color={theme.overlay1}>
-              {" "}
-              {"\u2193"} {belowCount} more
+              {" \u2193"} {belowCount} more
             </Text>
           </Box>
         )}
-      </Box>
-    );
-  };
-
-  // --- Codex column content ---
-  const renderCodexColumn = () => {
-    return (
-      <Box paddingX={2} paddingY={1} justifyContent="center" alignItems="center" flexGrow={1}>
-        <Text color={theme.overlay0}>No profiles configured</Text>
       </Box>
     );
   };
@@ -300,16 +436,16 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
         </Text>
         <Text color={theme.overlay0}>
           <Text color={theme.overlay1}>esc</Text> back
-          {" · "}
+          {" \u00b7 "}
           <Text color={theme.overlay1}>{"\u21B5"}</Text> switch
-          {" · "}
+          {" \u00b7 "}
           <Text color={theme.overlay1}>l</Text> login
-          {" · "}
+          {" \u00b7 "}
           <Text color={theme.overlay1}>n</Text> next
-          {" · "}
-          <Text color={theme.overlay1}>s</Text> save
-          {" · "}
-          <Text color={theme.overlay1}>r</Text> refresh
+          {" \u00b7 "}
+          <Text color={theme.overlay1}>r</Text> refresh token
+          {" \u00b7 "}
+          <Text color={theme.overlay1}>f</Text> refetch
         </Text>
       </Box>
 
@@ -351,7 +487,9 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
               Codex (coming soon)
             </Text>
           </Box>
-          {renderCodexColumn()}
+          <Box paddingX={2} paddingY={1} justifyContent="center" alignItems="center" flexGrow={1}>
+            <Text color={theme.overlay0}>No profiles configured</Text>
+          </Box>
         </Box>
       </Box>
 
@@ -363,7 +501,7 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           ) : profiles.length > 0 ? (
             <Text>
               {profiles.length} profile{profiles.length !== 1 ? "s" : ""}
-              {" · "}
+              {" \u00b7 "}
               {profiles.filter((p) => p.has_credentials).length} with saved credentials
             </Text>
           ) : loading ? (
