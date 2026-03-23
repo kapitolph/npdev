@@ -58,6 +58,7 @@ export type AppAction =
   | { type: "cd-to-repo"; repoPath: string }
   | { type: "join-team"; sessionName: string }
   | { type: "ccp-login"; profileName: string }
+  | { type: "cxp-login"; profileName: string }
   | { type: "update-done" }
   | { type: "exit" };
 

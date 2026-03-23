@@ -4,9 +4,14 @@ import { sshExec } from "../../../lib/ssh";
 import type { Machine } from "../../../types";
 import type { AppAction } from "../App";
 import { useTheme } from "../context/ThemeContext";
+import type { CodexProfile } from "../hooks/useCodexProfiles";
+import { useCodexProfiles } from "../hooks/useCodexProfiles";
+import type { Profile } from "../hooks/useProfiles";
 import { useProfiles } from "../hooks/useProfiles";
 import { useTerminalSize } from "../hooks/useTerminalSize";
 import { Spinner } from "./Spinner";
+
+type FocusColumn = "claude" | "codex";
 
 interface Props {
   machine: Machine;
@@ -18,9 +23,17 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
   const theme = useTheme();
   const { cols, rows } = useTerminalSize();
   const { profiles, loading, refresh } = useProfiles(machine);
+  const {
+    profiles: codexProfiles,
+    loading: codexLoading,
+    refresh: codexRefresh,
+  } = useCodexProfiles(machine);
 
+  const [focusColumn, setFocusColumn] = useState<FocusColumn>("claude");
   const [profileCursor, setProfileCursor] = useState(0);
+  const [codexCursor, setCodexCursor] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [codexScrollOffset, setCodexScrollOffset] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState(false);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,6 +43,10 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
   useEffect(() => {
     setProfileCursor((c) => Math.min(c, Math.max(0, profiles.length - 1)));
   }, [profiles.length]);
+
+  useEffect(() => {
+    setCodexCursor((c) => Math.min(c, Math.max(0, codexProfiles.length - 1)));
+  }, [codexProfiles.length]);
 
   const showStatus = useCallback((msg: string) => {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -46,11 +63,17 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     };
   }, []);
 
+  const currentCursor = focusColumn === "claude" ? profileCursor : codexCursor;
+  const currentList = focusColumn === "claude" ? profiles : codexProfiles;
+  const setCurrentCursor = focusColumn === "claude" ? setProfileCursor : setCodexCursor;
+  const currentScrollOffset = focusColumn === "claude" ? scrollOffset : codexScrollOffset;
+  const setCurrentScrollOffset = focusColumn === "claude" ? setScrollOffset : setCodexScrollOffset;
+
   const moveCursor = useCallback(
     (delta: number) => {
-      setProfileCursor((prev) => {
-        const next = Math.max(0, Math.min(prev + delta, profiles.length - 1));
-        setScrollOffset((offset) => {
+      setCurrentCursor((prev) => {
+        const next = Math.max(0, Math.min(prev + delta, currentList.length - 1));
+        setCurrentScrollOffset((offset) => {
           if (next < offset) return next;
           if (next >= offset + maxVisible) return next - maxVisible + 1;
           return offset;
@@ -58,46 +81,52 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
         return next;
       });
     },
-    [profiles.length, maxVisible],
+    [currentList.length, maxVisible, setCurrentCursor, setCurrentScrollOffset],
   );
 
   // --- Action handlers ---
 
   const handleSwitch = useCallback(async () => {
-    if (profiles.length === 0 || actionInProgress) return;
-    const profile = profiles[profileCursor];
+    if (currentList.length === 0 || actionInProgress) return;
+    const profile = currentList[currentCursor];
     if (!profile || !profile.has_credentials) {
       showStatus("No saved credentials \u2014 press l to login first");
       return;
     }
+    const script = focusColumn === "claude" ? "claude-profile.sh" : "codex-profile.sh";
     setActionInProgress(true);
     try {
-      await sshExec(machine, `bash ~/.vps/claude-profile.sh use '${profile.name}' --json`);
+      await sshExec(machine, `bash ~/.vps/${script} use '${profile.name}' --json`);
       showStatus(`Switched to ${profile.name}`);
-      refresh();
+      focusColumn === "claude" ? refresh() : codexRefresh();
     } catch {
       showStatus("Switch failed");
     }
     setActionInProgress(false);
-  }, [profiles, profileCursor, machine, refresh, showStatus, actionInProgress]);
+  }, [currentList, currentCursor, focusColumn, machine, refresh, codexRefresh, showStatus, actionInProgress]);
 
   const handleNext = useCallback(async () => {
-    if (profiles.length === 0 || actionInProgress) return;
+    if (currentList.length === 0 || actionInProgress) return;
+    const script = focusColumn === "claude" ? "claude-profile.sh" : "codex-profile.sh";
     setActionInProgress(true);
     try {
-      const { stdout } = await sshExec(machine, "bash ~/.vps/claude-profile.sh next --json");
+      const { stdout } = await sshExec(machine, `bash ~/.vps/${script} next --json`);
       const parsed = JSON.parse(stdout);
       const nextName = parsed?.profile || "next profile";
       showStatus(`Switched to ${nextName}`);
-      refresh();
+      focusColumn === "claude" ? refresh() : codexRefresh();
     } catch {
       showStatus("Cycle failed");
     }
     setActionInProgress(false);
-  }, [profiles.length, machine, refresh, showStatus, actionInProgress]);
+  }, [currentList.length, focusColumn, machine, refresh, codexRefresh, showStatus, actionInProgress]);
 
   const handleRefreshToken = useCallback(async () => {
     if (actionInProgress) return;
+    if (focusColumn === "codex") {
+      showStatus("Codex manages token refresh internally");
+      return;
+    }
     const active = profiles.find((p) => p.active);
     if (!active) {
       showStatus("No active profile to refresh");
@@ -120,7 +149,7 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       showStatus("Token refresh failed");
     }
     setActionInProgress(false);
-  }, [profiles, machine, refresh, showStatus, actionInProgress]);
+  }, [focusColumn, profiles, machine, refresh, showStatus, actionInProgress]);
 
   // --- Input handling ---
 
@@ -129,6 +158,20 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
 
     if (key.escape) {
       onBack();
+      return;
+    }
+
+    // Left/Right: switch columns
+    if (key.leftArrow && focusColumn === "codex") {
+      setFocusColumn("claude");
+      return;
+    }
+    if (key.rightArrow && focusColumn === "claude") {
+      setFocusColumn("codex");
+      return;
+    }
+    if (key.tab) {
+      setFocusColumn((prev) => (prev === "claude" ? "codex" : "claude"));
       return;
     }
 
@@ -148,9 +191,13 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
 
     // l: login via interactive TTY
     if (input === "l") {
-      if (profiles.length > 0 && profiles[profileCursor]) {
-        const p = profiles[profileCursor];
-        onAction({ type: "ccp-login", profileName: p.name });
+      if (currentList.length > 0 && currentList[currentCursor]) {
+        const p = currentList[currentCursor];
+        if (focusColumn === "claude") {
+          onAction({ type: "ccp-login", profileName: p.name });
+        } else {
+          onAction({ type: "cxp-login", profileName: p.name });
+        }
       }
       return;
     }
@@ -162,18 +209,23 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
 
     // s: save — only on active profile
     if (input === "s") {
-      if (profiles.length === 0) return;
-      const profile = profiles[profileCursor];
+      if (currentList.length === 0) return;
+      const profile = currentList[currentCursor];
       if (!profile?.active) {
         showStatus("Can only save on the active profile");
         return;
       }
-      handleRefreshToken();
+      if (focusColumn === "claude") {
+        handleRefreshToken();
+      } else {
+        showStatus("Codex manages token refresh internally");
+      }
       return;
     }
 
     if (input === "f") {
       refresh();
+      codexRefresh();
       showStatus("Refreshing...");
       return;
     }
@@ -196,14 +248,23 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     if (profile.token_status === "expired" || profile.token_status.startsWith("expired")) {
       return { text: profile.token_status, color: theme.red };
     }
+    if (profile.token_status === "stale") {
+      return { text: "stale (>8d)", color: theme.yellow };
+    }
     return { text: profile.token_status, color: theme.overlay1 };
   };
 
   const columnWidth = Math.max(20, Math.floor((cols - 6) / 2));
 
-  // --- Claude Code column content ---
-  const renderClaudeCodeColumn = () => {
-    if (loading) {
+  const renderProfileList = (
+    profileList: (Profile | CodexProfile)[],
+    isLoading: boolean,
+    isFocused: boolean,
+    cursor: number,
+    offset: number,
+    extraLine?: (p: Profile | CodexProfile) => string | null,
+  ) => {
+    if (isLoading) {
       return (
         <Box paddingX={2} paddingY={1}>
           <Spinner label="Loading profiles..." />
@@ -211,7 +272,7 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       );
     }
 
-    if (profiles.length === 0) {
+    if (profileList.length === 0) {
       return (
         <Box paddingX={2} paddingY={1}>
           <Text color={theme.overlay0}>No profiles configured</Text>
@@ -219,11 +280,11 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       );
     }
 
-    const activeProfile = profiles.find((p) => p.active);
+    const activeProfile = profileList.find((p) => p.active);
     const activeStatus = activeProfile ? formatTokenStatus(activeProfile) : null;
-    const visibleProfiles = profiles.slice(scrollOffset, scrollOffset + maxVisible);
-    const aboveCount = scrollOffset;
-    const belowCount = Math.max(0, profiles.length - scrollOffset - maxVisible);
+    const visibleProfiles = profileList.slice(offset, offset + maxVisible);
+    const aboveCount = offset;
+    const belowCount = Math.max(0, profileList.length - offset - maxVisible);
 
     return (
       <Box flexDirection="column" paddingX={1}>
@@ -248,23 +309,24 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
         )}
 
         {visibleProfiles.map((profile, i) => {
-          const globalIdx = scrollOffset + i;
-          const isFocused = globalIdx === profileCursor;
+          const globalIdx = offset + i;
+          const isItemFocused = isFocused && globalIdx === cursor;
           const tokenInfo = formatTokenStatus(profile);
+          const extra = extraLine?.(profile);
 
           return (
             <Box key={profile.name} flexDirection="column" paddingX={1} paddingY={0}>
               <Box>
                 <Text
-                  color={isFocused ? theme.accent : theme.text}
-                  backgroundColor={isFocused ? theme.highlight : undefined}
+                  color={isItemFocused ? theme.accent : theme.text}
+                  backgroundColor={isItemFocused ? theme.highlight : undefined}
                 >
                   {profile.active ? (
                     <Text color={theme.green}>{"\u25CF"}</Text>
                   ) : (
                     <Text color={theme.overlay0}>{"\u25CB"}</Text>
                   )}{" "}
-                  <Text bold color={isFocused ? theme.accent : theme.text}>
+                  <Text bold color={isItemFocused ? theme.accent : theme.text}>
                     {profile.name}
                   </Text>
                 </Text>
@@ -274,6 +336,9 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
               </Box>
               <Box paddingLeft={2}>
                 <Text color={tokenInfo.color}>{tokenInfo.text}</Text>
+                {extra && (
+                  <Text color={theme.overlay1}> {extra}</Text>
+                )}
               </Box>
             </Box>
           );
@@ -289,6 +354,11 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       </Box>
     );
   };
+
+  const totalProfiles = profiles.length + codexProfiles.length;
+  const totalCreds =
+    profiles.filter((p) => p.has_credentials).length +
+    codexProfiles.filter((p) => p.has_credentials).length;
 
   // --- Main render ---
   return (
@@ -306,7 +376,7 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           {" \u00b7 "}
           <Text color={theme.overlay1}>n</Text> next
           {" \u00b7 "}
-          <Text color={theme.overlay1}>r</Text> refresh token
+          <Text color={theme.overlay1}>tab</Text> column
           {" \u00b7 "}
           <Text color={theme.overlay1}>f</Text> refetch
         </Text>
@@ -323,32 +393,48 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           flexDirection="column"
           width={columnWidth}
           borderStyle="round"
-          borderColor={theme.panelBorderFocused}
+          borderColor={focusColumn === "claude" ? theme.panelBorderFocused : theme.panelBorder}
           backgroundColor={theme.panelBg}
         >
           <Box paddingX={1}>
-            <Text bold color={theme.accent}>
+            <Text bold color={focusColumn === "claude" ? theme.accent : theme.overlay0}>
               Claude Code
             </Text>
           </Box>
-          {renderClaudeCodeColumn()}
+          {renderProfileList(
+            profiles,
+            loading,
+            focusColumn === "claude",
+            profileCursor,
+            scrollOffset,
+          )}
         </Box>
 
         <Box
           flexDirection="column"
           width={columnWidth}
           borderStyle="round"
-          borderColor={theme.panelBorder}
+          borderColor={focusColumn === "codex" ? theme.panelBorderFocused : theme.panelBorder}
           backgroundColor={theme.panelBg}
         >
           <Box paddingX={1}>
-            <Text bold color={theme.overlay0}>
-              Codex (coming soon)
+            <Text bold color={focusColumn === "codex" ? theme.accent : theme.overlay0}>
+              Codex CLI
             </Text>
           </Box>
-          <Box paddingX={2} paddingY={1} justifyContent="center" alignItems="center" flexGrow={1}>
-            <Text color={theme.overlay0}>No profiles configured</Text>
-          </Box>
+          {renderProfileList(
+            codexProfiles,
+            codexLoading,
+            focusColumn === "codex",
+            codexCursor,
+            codexScrollOffset,
+            (p) => {
+              const cp = p as CodexProfile;
+              return cp.plan_type && cp.plan_type !== "-" && cp.plan_type !== ""
+                ? cp.plan_type
+                : null;
+            },
+          )}
         </Box>
       </Box>
 
@@ -356,13 +442,13 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
         <Text color={theme.overlay0}>
           {actionInProgress ? (
             <Spinner label="Working..." />
-          ) : profiles.length > 0 ? (
+          ) : totalProfiles > 0 ? (
             <Text>
-              {profiles.length} profile{profiles.length !== 1 ? "s" : ""}
+              {totalProfiles} profile{totalProfiles !== 1 ? "s" : ""}
               {" \u00b7 "}
-              {profiles.filter((p) => p.has_credentials).length} with saved credentials
+              {totalCreds} with saved credentials
             </Text>
-          ) : loading ? (
+          ) : loading || codexLoading ? (
             "Loading..."
           ) : (
             "No profiles found"

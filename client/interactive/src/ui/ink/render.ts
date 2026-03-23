@@ -79,6 +79,15 @@ export async function renderInkDashboard(
             resolve();
             break;
           }
+          case "cxp-login": {
+            await sshInteractive(
+              machine,
+              `bash ~/.vps/codex-profile.sh login '${action.profileName}'`,
+              moshOpts,
+            );
+            resolve();
+            break;
+          }
           case "update-done":
             // Binary was replaced on disk — exit so user restarts with new version
             process.stdout.write("\x1B[2J\x1B[H");

@@ -4,6 +4,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { cmdCcp } from "./commands/ccp";
+import { cmdCxp } from "./commands/cxp";
 import { cmdInstall } from "./commands/install";
 import { cmdDescribe } from "./commands/describe";
 import { cmdEnd } from "./commands/end";
@@ -71,6 +72,14 @@ Claude Profiles:
   npdev ccp save <name>           Save current credentials
   npdev ccp login <name>          OAuth login (interactive)
 
+Codex Profiles:
+  npdev cxp [--json]              Show current Codex profile
+  npdev cxp list [--json]         List all profiles
+  npdev cxp use <name>            Switch to a profile
+  npdev cxp next                  Cycle to next profile
+  npdev cxp save <name>           Save current credentials
+  npdev cxp login <name>          Device auth login (interactive)
+
 Setup & Maintenance:
   npdev setup                     Set up developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
@@ -118,6 +127,28 @@ Examples:
   npdev ccp list --json
   npdev ccp use don
   npdev ccp next`,
+
+  cxp: `npdev cxp [command] [args...] [--json]
+
+Manage Codex CLI credential profiles on the VPS.
+
+Commands:
+  (none)        Show current profile (whoami)
+  list          List all profiles
+  use <name>    Switch to a profile by name
+  next          Cycle to next saved profile
+  save <name>   Save current credentials to a profile
+  login <name>  Device auth login and save credentials
+  logout [name] Remove saved credentials
+
+Flags:
+  --json    Output as JSON (for scripts/agents)
+
+Examples:
+  npdev cxp
+  npdev cxp list --json
+  npdev cxp use ced
+  npdev cxp next`,
 
   sessions: `npdev sessions [--json]
 
@@ -643,6 +674,13 @@ async function main(): Promise<void> {
   if (command === "ccp") {
     const machine = await getMachine();
     await cmdCcp(machine, remaining, { json: flags.json });
+    process.exit(0);
+  }
+
+  // npdev cxp [subcommand] [args...] [--json]
+  if (command === "cxp") {
+    const machine = await getMachine();
+    await cmdCxp(machine, remaining, { json: flags.json });
     process.exit(0);
   }
 
