@@ -391,6 +391,33 @@ cmd_refresh() {
   refresh_token=$(jq -r '.claudeAiOauth.refreshToken // empty' "$creds_file" 2>/dev/null)
   [[ -z "$refresh_token" ]] && die "No refresh token found for '$name'. Run: ccp login $name"
 
+  # Skip refresh if token is still valid with >1 day remaining (avoid rate limits)
+  local force="${2:-}"
+  if [[ "$force" != "--force" ]]; then
+    local expires_at
+    expires_at=$(jq -r '.claudeAiOauth.expiresAt // empty' "$creds_file" 2>/dev/null)
+    if [[ -n "$expires_at" ]]; then
+      local now_ms
+      now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
+      local remaining_s=$(( (expires_at - now_ms) / 1000 ))
+      if (( remaining_s > 7200 )); then
+        local days=$(( remaining_s / 86400 ))
+        local hours=$(( (remaining_s % 86400) / 3600 ))
+        if $JSON_MODE; then
+          local remaining_label
+          if (( days > 0 )); then remaining_label="${days}d"; else remaining_label="${hours}h"; fi
+          jq -n --arg profile "$name" --arg token_status "valid (${remaining_label})" \
+            '{"ok":true,"action":"skipped","profile":$profile,"token_status":$token_status,"message":"Token still valid — use --force to refresh anyway"}'
+        else
+          local remaining_label
+          if (( days > 0 )); then remaining_label="${days}d"; else remaining_label="${hours}h"; fi
+          echo "Token for '$name' still valid (${remaining_label} remaining) — skipping. Use --force to refresh anyway."
+        fi
+        return 0
+      fi
+    fi
+  fi
+
   local CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
   local TOKEN_URL="https://platform.claude.com/v1/oauth/token"
 
@@ -648,7 +675,7 @@ cmd_help() {
       {"name":"next","usage":"ccp next","description":"Cycle to next saved profile"},
       {"name":"login","usage":"ccp login <name>","description":"OAuth login and save credentials"},
       {"name":"save","usage":"ccp save <name>","description":"Save current credentials to a profile"},
-      {"name":"refresh","usage":"ccp refresh [name]","description":"Refresh an expired token using the stored refresh token"},
+      {"name":"refresh","usage":"ccp refresh [name] [--force]","description":"Refresh token (skips if >1d remaining, --force to override)"},
       {"name":"logout","usage":"ccp logout [name]","description":"Remove saved credentials for a profile"},
       {"name":"help","usage":"ccp help","description":"Show help"}
     ]}'
@@ -668,7 +695,7 @@ Commands:
   <number>      Switch to profile by number (from list)
   next          Cycle to next saved profile
   login <name>  OAuth login and save credentials
-  refresh [name] Refresh token using stored refresh token (default: active profile)
+  refresh [name] [--force]  Refresh token (skips if >1d left, --force overrides)
   logout [name] Remove saved credentials (default: active profile)
   save <name>   Save current credentials to a profile
   whoami        Show current profile details
@@ -715,7 +742,7 @@ case "${1:-}" in
   next)         cmd_next ;;
   whoami)       cmd_whoami ;;
   login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name>"; cmd_login "$1" ;;
-  refresh)      shift; cmd_refresh "${1:-}" ;;
+  refresh)      shift; cmd_refresh "${1:-}" "${2:-}" ;;
   logout)       shift; cmd_logout "${1:-}" ;;
   save)         shift; [[ $# -lt 1 ]] && die "Usage: ccp save <name> [--force]"; cmd_save "$1" "${2:-}" ;;
   use|switch)   shift; [[ $# -lt 1 ]] && die "Usage: ccp use <name>"; cmd_use "$1" ;;

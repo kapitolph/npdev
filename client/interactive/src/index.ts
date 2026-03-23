@@ -4,6 +4,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { cmdCcp } from "./commands/ccp";
+import { cmdInstall } from "./commands/install";
 import { cmdDescribe } from "./commands/describe";
 import { cmdEnd } from "./commands/end";
 import { cmdRepoInfo } from "./commands/repo-info";
@@ -629,6 +630,13 @@ async function main(): Promise<void> {
       process.exit(0);
     }
     throw usageError(`Unknown summaries subcommand: ${subcommand}`, { subcommand });
+  }
+
+  // npdev install <target...> [--json]  — copy server scripts to ~/.vps
+  if (command === "install") {
+    if (!isOnVPS()) throw usageError("'npdev install' must be run on the VPS");
+    await cmdInstall(remaining, { json: flags.json });
+    process.exit(0);
   }
 
   // npdev ccp [subcommand] [args...] [--json]
