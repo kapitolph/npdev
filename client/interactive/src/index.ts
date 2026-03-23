@@ -3,6 +3,7 @@ import { chmod, copyFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
+import { cmdCcp } from "./commands/ccp";
 import { cmdDescribe } from "./commands/describe";
 import { cmdEnd } from "./commands/end";
 import { cmdRepoInfo } from "./commands/repo-info";
@@ -61,6 +62,14 @@ Summaries:
   npdev summaries generate --window 3h|daily [--json]
                                                     Generate a summary
 
+Claude Profiles:
+  npdev ccp [--json]              Show current Claude profile
+  npdev ccp list [--json]         List all profiles
+  npdev ccp use <name>            Switch to a profile
+  npdev ccp next                  Cycle to next profile
+  npdev ccp save <name>           Save current credentials
+  npdev ccp login <name>          OAuth login (interactive)
+
 Setup & Maintenance:
   npdev setup                     Set up developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
@@ -88,6 +97,27 @@ Inside a Session:
   Ctrl+B, D                       Detach (session stays alive)`;
 
 const COMMANDS_HELP: Record<string, string> = {
+  ccp: `npdev ccp [command] [args...] [--json]
+
+Manage Claude Code credential profiles on the VPS.
+
+Commands:
+  (none)        Show current profile (whoami)
+  list          List all profiles
+  use <name>    Switch to a profile by name
+  next          Cycle to next saved profile
+  save <name>   Save current credentials to a profile
+  login <name>  OAuth login and save credentials
+
+Flags:
+  --json    Output as JSON (for scripts/agents)
+
+Examples:
+  npdev ccp
+  npdev ccp list --json
+  npdev ccp use don
+  npdev ccp next`,
+
   sessions: `npdev sessions [--json]
 
 List all active sessions on the VPS.
@@ -599,6 +629,13 @@ async function main(): Promise<void> {
       process.exit(0);
     }
     throw usageError(`Unknown summaries subcommand: ${subcommand}`, { subcommand });
+  }
+
+  // npdev ccp [subcommand] [args...] [--json]
+  if (command === "ccp") {
+    const machine = await getMachine();
+    await cmdCcp(machine, remaining, { json: flags.json });
+    process.exit(0);
   }
 
   // Default: treat as session name (npdev my-feature [description...])

@@ -251,6 +251,13 @@ install_file "server/session.sh" "$VPS_DIR/session.sh" fallback_session_sh
 
 chmod +x "$VPS_DIR/session.sh"
 
+# Install claude-profile.sh (ccp)
+fallback_claude_profile_sh() {
+  curl -fsSL "https://raw.githubusercontent.com/kapitolph/npdev/main/server/claude-profile.sh"
+}
+install_file "server/claude-profile.sh" "$VPS_DIR/claude-profile.sh" fallback_claude_profile_sh
+chmod +x "$VPS_DIR/claude-profile.sh"
+
 # Install git credential helper (uses per-developer GH_TOKEN from env)
 cat > "$VPS_DIR/git-credential-token" << 'CREDHELPER'
 #!/bin/bash
