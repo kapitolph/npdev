@@ -10,6 +10,7 @@ DEVELOPERS_DIR="${DEVELOPERS_DIR:-$HOME/.vps/developers}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 ACCOUNT_FILE="${ACCOUNT_FILE:-$HOME/.claude.json}"
 REGISTRY="${REGISTRY:-$HOME/.vps/sessions.yaml}"
+ACTIVE_PROFILE_FILE="${ACTIVE_PROFILE_FILE:-$HOME/.claude/.active-profile}"
 
 # ─── JSON mode ────────────────────────────────────────────────────────────────
 JSON_MODE=false
@@ -59,46 +60,24 @@ saved_email() {
   [[ -f "$acct" ]] && jq -r '.oauthAccount.emailAddress // empty' "$acct" 2>/dev/null || echo ""
 }
 
-# Get the currently active profile name by matching credentials (token match)
+# Get the currently active profile name from state file
 current_profile() {
-  [[ -f "$CREDENTIALS_FILE" ]] || return
-  local live_token
-  live_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDENTIALS_FILE" 2>/dev/null) || return
-  [[ -z "$live_token" ]] && return
-
-  for env_file in "$DEVELOPERS_DIR"/*.env; do
+  if [[ -f "$ACTIVE_PROFILE_FILE" ]]; then
     local name
-    name=$(basename "$env_file" .env)
-    local saved_creds="$DEVELOPERS_DIR/${name}.claude-credentials.json"
-    [[ -f "$saved_creds" ]] || continue
-    local saved_token
-    saved_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$saved_creds" 2>/dev/null) || continue
-    if [[ "$live_token" == "$saved_token" ]]; then
+    name=$(<"$ACTIVE_PROFILE_FILE")
+    # Validate the profile still exists
+    if [[ -n "$name" && -f "$DEVELOPERS_DIR/${name}.env" ]]; then
       echo "$name"
-      return
     fi
-  done
+  fi
+  return 0
 }
 
-# Fallback: identify current profile by email when token was auto-refreshed
-current_profile_by_email() {
-  [[ -f "$ACCOUNT_FILE" ]] || return
-  local live_email
-  live_email=$(jq -r '.oauthAccount.emailAddress // empty' "$ACCOUNT_FILE" 2>/dev/null) || return
-  [[ -z "$live_email" ]] && return
-
-  for env_file in "$DEVELOPERS_DIR"/*.env; do
-    local name
-    name=$(basename "$env_file" .env)
-    local saved_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
-    [[ -f "$saved_acct" ]] || continue
-    local saved_email
-    saved_email=$(jq -r '.oauthAccount.emailAddress // empty' "$saved_acct" 2>/dev/null) || true
-    if [[ "$live_email" == "$saved_email" ]]; then
-      echo "$name"
-      return
-    fi
-  done
+# Set the active profile
+set_active_profile() {
+  local name="$1"
+  mkdir -p "$(dirname "$ACTIVE_PROFILE_FILE")"
+  printf '%s' "$name" > "$ACTIVE_PROFILE_FILE"
 }
 
 # Auto-save current live credentials back to the active profile before switching.
@@ -107,12 +86,8 @@ auto_save_current() {
   [[ -f "$CREDENTIALS_FILE" ]] || return 0
   [[ -f "$ACCOUNT_FILE" ]] || return 0
 
-  # Try token match first, fall back to email match
   local current
   current=$(current_profile)
-  if [[ -z "$current" ]]; then
-    current=$(current_profile_by_email)
-  fi
   [[ -z "$current" ]] && return 0
 
   # Silently update the saved credentials with the live (possibly refreshed) ones
@@ -213,6 +188,24 @@ cmd_save() {
   local email
   email=$(jq -r '.oauthAccount.emailAddress // "unknown"' "$dest_acct")
 
+  # Guard: reject if another profile already uses this email
+  if [[ "$email" != "unknown" ]]; then
+    for env_file in "$DEVELOPERS_DIR"/*.env; do
+      local other
+      other=$(basename "$env_file" .env)
+      [[ "$other" == "$name" ]] && continue
+      local other_acct="$DEVELOPERS_DIR/${other}.claude-account.json"
+      [[ -f "$other_acct" ]] || continue
+      local other_email
+      other_email=$(jq -r '.oauthAccount.emailAddress // empty' "$other_acct" 2>/dev/null) || true
+      if [[ "$other_email" == "$email" ]]; then
+        # Roll back written files
+        rm -f "$dest_creds" "$dest_acct"
+        die "Email '$email' is already saved under profile '$other'. Each profile must use a unique account."
+      fi
+    done
+  fi
+
   if $JSON_MODE; then
     jq -n --arg profile "$name" --arg email "$email" \
       '{"ok":true,"action":"saved","profile":$profile,"email":$email}'
@@ -257,6 +250,9 @@ cmd_use() {
   fi
   mv "$tmp_file" "$ACCOUNT_FILE"
 
+  # Track active profile
+  set_active_profile "$name"
+
   local email
   email=$(saved_email "$name")
 
@@ -272,12 +268,144 @@ cmd_login() {
   local name="$1"
   validate_dev "$name"
 
-  echo "Starting Claude OAuth login for '$name'..."
-  echo "Complete the authentication in your browser."
-  claude auth login
+  local email
+  email=$(dev_email "$name")
 
-  # After successful login, save the credentials
+  # OAuth constants (from Claude Code CLI)
+  local CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+  local AUTH_URL="https://claude.ai/oauth/authorize"
+  local TOKEN_URL="https://platform.claude.com/v1/oauth/token"
+  local REDIRECT_URI="https://platform.claude.com/oauth/code/callback"
+  local SCOPES="org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers"
+
+  # Generate PKCE code_verifier (43-128 chars, URL-safe base64)
+  local code_verifier
+  code_verifier=$(openssl rand -base64 96 | tr -d '=+/' | head -c 128)
+
+  # Generate code_challenge (SHA256 of verifier, URL-safe base64)
+  local code_challenge
+  code_challenge=$(printf '%s' "$code_verifier" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+
+  # Generate random state
+  local state
+  state=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+
+  # Build authorization URL
+  local scope_encoded
+  scope_encoded=$(printf '%s' "$SCOPES" | sed 's/ /+/g')
+
+  local auth_link="${AUTH_URL}?code=true&client_id=${CLIENT_ID}&response_type=code&redirect_uri=$(printf '%s' "$REDIRECT_URI" | jq -sRr @uri)&scope=${scope_encoded}&code_challenge=${code_challenge}&code_challenge_method=S256&state=${state}"
+
+  if [[ -n "$email" ]]; then
+    auth_link="${auth_link}&login_hint=$(printf '%s' "$email" | jq -sRr @uri)"
+  fi
+
+  echo ""
+  echo "Login for profile: $name ($email)"
+  echo ""
+  echo "Open this URL in your browser:"
+  echo ""
+  echo "  $auth_link"
+  echo ""
+  echo "After logging in, you'll see an authorization code."
+  echo ""
+  read -rp "Paste the code here: " auth_code
+
+  if [[ -z "$auth_code" ]]; then
+    die "No code entered."
+  fi
+
+  # Exchange authorization code for tokens
+  local response
+  response=$(curl -sS -X POST "$TOKEN_URL" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n \
+      --arg code "$auth_code" \
+      --arg verifier "$code_verifier" \
+      --arg redirect "$REDIRECT_URI" \
+      --arg client_id "$CLIENT_ID" \
+      '{
+        grant_type: "authorization_code",
+        code: $code,
+        code_verifier: $verifier,
+        redirect_uri: $redirect,
+        client_id: $client_id
+      }')" 2>&1)
+
+  # Check for error
+  if ! echo "$response" | jq -e '.access_token' >/dev/null 2>&1; then
+    local err_msg
+    err_msg=$(echo "$response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null || echo "$response")
+    die "Token exchange failed: $err_msg"
+  fi
+
+  # Extract tokens
+  local access_token refresh_token expires_in
+  access_token=$(echo "$response" | jq -r '.access_token')
+  refresh_token=$(echo "$response" | jq -r '.refresh_token // empty')
+  expires_in=$(echo "$response" | jq -r '.expires_in // 86400')
+
+  # Calculate expiry timestamp in milliseconds
+  local now_ms expires_at
+  now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
+  expires_at=$((now_ms + expires_in * 1000))
+
+  # Build credentials JSON (same structure as Claude Code)
+  local creds
+  creds=$(jq -n \
+    --arg at "$access_token" \
+    --arg rt "$refresh_token" \
+    --argjson ea "$expires_at" \
+    '{
+      claudeAiOauth: {
+        accessToken: $at,
+        refreshToken: $rt,
+        expiresAt: $ea
+      }
+    }')
+
+  # Write to live credentials file
+  printf '%s' "$creds" | jq . > "$CREDENTIALS_FILE"
+  chmod 600 "$CREDENTIALS_FILE"
+
+  # Save for this profile and set as active
   cmd_save "$name" "--force"
+  set_active_profile "$name"
+}
+
+cmd_logout() {
+  local name="${1:-}"
+
+  # If no name given, use active profile
+  if [[ -z "$name" ]]; then
+    name=$(current_profile)
+    [[ -z "$name" ]] && die "No active profile. Specify a name: ccp logout <name>"
+  fi
+
+  validate_dev "$name"
+
+  local creds_file="$DEVELOPERS_DIR/${name}.claude-credentials.json"
+  local acct_file="$DEVELOPERS_DIR/${name}.claude-account.json"
+
+  if [[ ! -f "$creds_file" ]]; then
+    die "No saved credentials for '$name' — nothing to logout."
+  fi
+
+  rm -f "$creds_file" "$acct_file"
+
+  # If this was the active profile, clear the active state and live credentials
+  local current
+  current=$(current_profile)
+  if [[ "$current" == "$name" ]]; then
+    rm -f "$ACTIVE_PROFILE_FILE"
+    rm -f "$CREDENTIALS_FILE"
+  fi
+
+  if $JSON_MODE; then
+    jq -n --arg profile "$name" '{"ok":true,"action":"logout","profile":$profile}'
+  else
+    echo "Logged out '$name' — credentials removed."
+  fi
 }
 
 cmd_next() {
@@ -427,6 +555,7 @@ cmd_help() {
       {"name":"next","usage":"ccp next","description":"Cycle to next saved profile"},
       {"name":"login","usage":"ccp login <name>","description":"OAuth login and save credentials"},
       {"name":"save","usage":"ccp save <name>","description":"Save current credentials to a profile"},
+      {"name":"logout","usage":"ccp logout [name]","description":"Remove saved credentials for a profile"},
       {"name":"help","usage":"ccp help","description":"Show help"}
     ]}'
     return
@@ -445,6 +574,7 @@ Commands:
   <number>      Switch to profile by number (from list)
   next          Cycle to next saved profile
   login <name>  OAuth login and save credentials
+  logout [name] Remove saved credentials (default: active profile)
   save <name>   Save current credentials to a profile
   whoami        Show current profile details
   help          Show this help
@@ -490,6 +620,7 @@ case "${1:-}" in
   next)         cmd_next ;;
   whoami)       cmd_whoami ;;
   login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name>"; cmd_login "$1" ;;
+  logout)       shift; cmd_logout "${1:-}" ;;
   save)         shift; [[ $# -lt 1 ]] && die "Usage: ccp save <name> [--force]"; cmd_save "$1" "${2:-}" ;;
   use|switch)   shift; [[ $# -lt 1 ]] && die "Usage: ccp use <name>"; cmd_use "$1" ;;
   *[!0-9]*)     try_as_name "$1" ;;
