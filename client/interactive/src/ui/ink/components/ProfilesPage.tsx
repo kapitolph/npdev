@@ -15,8 +15,6 @@ interface Props {
 type LoginModal = {
   profileName: string;
   email: string;
-  phase: "instructions" | "running" | "done" | "error";
-  message?: string;
 };
 
 export function ProfilesPage({ machine, onBack }: Props) {
@@ -122,48 +120,14 @@ export function ProfilesPage({ machine, onBack }: Props) {
     setActionInProgress(false);
   }, [profiles, machine, refresh, showStatus, actionInProgress]);
 
-  const handleLoginStart = useCallback(async () => {
-    if (!loginModal || loginModal.phase !== "instructions") return;
-    const { profileName } = loginModal;
-    setLoginModal((m) => (m ? { ...m, phase: "running" } : m));
-    try {
-      const { exitCode } = await sshExec(
-        machine,
-        `bash ~/.vps/claude-profile.sh login '${profileName}' --json`,
-      );
-      if (exitCode === 0) {
-        setLoginModal((m) =>
-          m ? { ...m, phase: "done", message: `Logged in as ${profileName}` } : m,
-        );
-        refresh();
-      } else {
-        setLoginModal((m) =>
-          m ? { ...m, phase: "error", message: "Login failed — see terminal output" } : m,
-        );
-      }
-    } catch {
-      setLoginModal((m) => (m ? { ...m, phase: "error", message: "Login failed" } : m));
-    }
-  }, [loginModal, machine, refresh]);
-
   // --- Input handling ---
 
   useInput((input, key) => {
-    // Login modal input
+    // Login modal: esc or enter to dismiss
     if (loginModal) {
-      if (key.escape) {
+      if (key.escape || key.return) {
         setLoginModal(null);
         refresh();
-        return;
-      }
-      if (key.return && loginModal.phase === "instructions") {
-        handleLoginStart();
-        return;
-      }
-      if (key.return && (loginModal.phase === "done" || loginModal.phase === "error")) {
-        setLoginModal(null);
-        refresh();
-        return;
       }
       return;
     }
@@ -194,11 +158,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
     if (input === "l") {
       if (profiles.length > 0 && profiles[profileCursor]) {
         const p = profiles[profileCursor];
-        setLoginModal({
-          profileName: p.name,
-          email: p.email,
-          phase: "instructions",
-        });
+        setLoginModal({ profileName: p.name, email: p.email });
       }
       return;
     }
@@ -270,13 +230,7 @@ export function ProfilesPage({ machine, onBack }: Props) {
             width={modalWidth}
             backgroundColor={theme.panelBg}
             borderStyle="round"
-            borderColor={
-              loginModal.phase === "error"
-                ? theme.red
-                : loginModal.phase === "done"
-                  ? theme.green
-                  : theme.accent
-            }
+            borderColor={theme.accent}
             paddingX={2}
             paddingY={1}
           >
@@ -285,52 +239,23 @@ export function ProfilesPage({ machine, onBack }: Props) {
             </Text>
             {loginModal.email && <Text color={theme.subtext0}>{loginModal.email}</Text>}
             <Text> </Text>
-
-            {loginModal.phase === "instructions" && (
-              <>
-                <Text color={theme.overlay1}>This will start OAuth login for this profile.</Text>
-                <Text color={theme.overlay1}>
-                  A URL will be printed — copy it and open in your browser.
-                </Text>
-                <Text> </Text>
-                <Text color={theme.overlay1}>Alternatively, run in a separate terminal:</Text>
-                <Box paddingY={1}>
-                  <Text color={theme.lavender} bold>
-                    {cmd}
-                  </Text>
-                </Box>
-              </>
-            )}
-
-            {loginModal.phase === "running" && (
-              <Box paddingY={1}>
-                <Spinner label="Waiting for OAuth login to complete..." />
-              </Box>
-            )}
-
-            {loginModal.phase === "done" && <Text color={theme.green}>{loginModal.message}</Text>}
-
-            {loginModal.phase === "error" && <Text color={theme.red}>{loginModal.message}</Text>}
+            <Text color={theme.overlay1}>To log in, open a separate terminal and run:</Text>
+            <Text> </Text>
+            <Box paddingX={2}>
+              <Text color={theme.lavender} bold>
+                {cmd}
+              </Text>
+            </Box>
+            <Text> </Text>
+            <Text color={theme.overlay1}>Complete the OAuth flow in your browser,</Text>
+            <Text color={theme.overlay1}>then press Esc to return and refresh.</Text>
           </Box>
         </Box>
         <Box flexGrow={1} />
         <Box paddingX={1}>
           <Text color={theme.overlay0}>
-            {loginModal.phase === "instructions" ? (
-              <>
-                <Text color={theme.accent}>{"\u21B5"}</Text> start login{" · "}
-                <Text color={theme.accent}>esc</Text> cancel
-              </>
-            ) : loginModal.phase === "running" ? (
-              <>
-                <Text color={theme.accent}>esc</Text> cancel
-              </>
-            ) : (
-              <>
-                <Text color={theme.accent}>{"\u21B5"}</Text> done{" · "}
-                <Text color={theme.accent}>esc</Text> back
-              </>
-            )}
+            <Text color={theme.accent}>esc</Text> back{" \u00b7 "}
+            <Text color={theme.accent}>{"\u21B5"}</Text> back
           </Text>
         </Box>
       </Box>
