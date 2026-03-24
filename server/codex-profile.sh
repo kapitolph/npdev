@@ -208,6 +208,8 @@ cmd_save() {
     done
   fi
 
+  set_active_profile "$name"
+
   local email
   email=$(dev_email "$name")
 
@@ -430,6 +432,29 @@ cmd_list() {
 cmd_whoami() {
   local current
   current=$(current_profile)
+
+  if [[ -z "$current" ]]; then
+    # Try to find matching profile by account_id before giving up
+    if [[ -f "$AUTH_FILE" ]]; then
+      local live_id
+      live_id=$(jq -r '.tokens.account_id // empty' "$AUTH_FILE" 2>/dev/null)
+      if [[ -n "$live_id" ]]; then
+        for env_file in "$DEVELOPERS_DIR"/*.env; do
+          local pname
+          pname=$(basename "$env_file" .env)
+          local saved_auth="$DEVELOPERS_DIR/${pname}.codex-auth.json"
+          [[ -f "$saved_auth" ]] || continue
+          local saved_id
+          saved_id=$(jq -r '.tokens.account_id // empty' "$saved_auth" 2>/dev/null)
+          if [[ "$saved_id" == "$live_id" ]]; then
+            current="$pname"
+            set_active_profile "$current"
+            break
+          fi
+        done
+      fi
+    fi
+  fi
 
   if [[ -z "$current" ]]; then
     if $JSON_MODE; then
