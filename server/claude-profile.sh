@@ -30,6 +30,14 @@ die() {
 }
 warn() { echo "WARNING: $*" >&2; }
 
+# Check if any argument is a help flag
+wants_help() {
+  for arg in "$@"; do
+    case "$arg" in --help|-h) return 0 ;; esac
+  done
+  return 1
+}
+
 # Get sorted list of developer names that have saved credentials
 get_credentialed_profiles() {
   for env_file in "$DEVELOPERS_DIR"/*.env; do
@@ -153,6 +161,23 @@ check_active_sessions() {
 }
 
 cmd_save() {
+  if wants_help "$@" || [[ $# -lt 1 ]]; then
+    cat <<'HELP'
+ccp save — Save current live credentials to a named profile
+
+Usage: ccp save <name> [--force]
+
+Arguments:
+  <name>     Developer name (must be registered in ~/.vps/developers/)
+  --force    Overwrite if profile already exists
+
+Copies the current live ~/.claude/.credentials.json and account info
+from ~/.claude.json into the developer's profile files. Rejects the
+save if another profile already uses the same email address.
+HELP
+    return
+  fi
+
   local name="$1"
   local force="${2:-}"
   validate_dev "$name"
@@ -217,6 +242,28 @@ cmd_save() {
 }
 
 cmd_use() {
+  if wants_help "$@" || [[ $# -lt 1 ]]; then
+    cat <<'HELP'
+ccp use — Switch to a developer's Claude profile
+
+Usage: ccp use <name>
+
+Arguments:
+  <name>   Developer name (must have saved credentials)
+
+Activates the profile by copying saved credentials into the live
+~/.claude/.credentials.json and merging account info into ~/.claude.json.
+Auto-saves the currently active profile's credentials first (captures
+any tokens that Claude CLI refreshed silently).
+
+Shortcuts:
+  ccp <name>     Same as 'ccp use <name>'
+  ccp <number>   Switch by profile number (from 'ccp list')
+  ccp next       Cycle to the next saved profile
+HELP
+    return
+  fi
+
   local name="$1"
   validate_dev "$name"
 
@@ -267,6 +314,26 @@ cmd_use() {
 }
 
 cmd_import() {
+  if wants_help "$@" || [[ $# -lt 1 ]]; then
+    cat <<'HELP'
+ccp import — Import credentials from stdin JSON
+
+Usage: ccp import <name> < credentials.json
+
+Arguments:
+  <name>   Developer name (must be registered in ~/.vps/developers/)
+
+Reads a JSON object from stdin with this shape:
+  { "credentials": { "claudeAiOauth": { ... } }, "account": { "oauthAccount": { ... } } }
+
+Saves to profile files only — does NOT activate. Run 'ccp use <name>' to activate.
+
+This command is typically called automatically by 'npdev ccp login <name>'
+from a developer's local machine.
+HELP
+    return
+  fi
+
   local name="$1"
   validate_dev "$name"
 
@@ -317,6 +384,25 @@ cmd_import() {
 }
 
 cmd_login() {
+  if wants_help "$@" || [[ $# -lt 1 ]]; then
+    cat <<'HELP'
+ccp login — Save a token to a developer profile (VPS-side)
+
+Usage: ccp login <name> --token <token>
+
+Arguments:
+  <name>           Developer name (must be registered in ~/.vps/developers/)
+  --token <token>  OAuth access token to store
+
+Saves the token to the developer's profile files without activating it.
+Run 'ccp use <name>' afterwards to make it the active profile.
+
+For browser-based OAuth login (recommended), run from your local machine:
+  npdev ccp login <name>
+HELP
+    return
+  fi
+
   local name="$1"
   shift
   validate_dev "$name"
@@ -381,6 +467,24 @@ On VPS, only --token login is supported. For browser-based OAuth, run:
 }
 
 cmd_refresh() {
+  if wants_help "$@"; then
+    cat <<'HELP'
+ccp refresh — Refresh an OAuth token using the stored refresh token
+
+Usage: ccp refresh [name] [--force]
+
+Arguments:
+  [name]    Developer name (defaults to active profile)
+  --force   Refresh even if current token has >2h remaining
+
+Exchanges the stored refresh token for a new access token via the
+Claude OAuth endpoint. Skips the request if the token still has more
+than 2 hours of validity (to avoid rate limits). Updates both the
+saved profile and live credentials (if this is the active profile).
+HELP
+    return
+  fi
+
   local name="${1:-}"
 
   # If no name given, use active profile
@@ -501,6 +605,22 @@ cmd_refresh() {
 }
 
 cmd_logout() {
+  if wants_help "$@"; then
+    cat <<'HELP'
+ccp logout — Remove saved credentials for a profile
+
+Usage: ccp logout [name]
+
+Arguments:
+  [name]   Developer name (defaults to active profile)
+
+Deletes the saved credential and account files for the profile.
+If this is the active profile, also clears the live credentials
+and active profile state.
+HELP
+    return
+  fi
+
   local name="${1:-}"
 
   # If no name given, use active profile
@@ -536,6 +656,19 @@ cmd_logout() {
 }
 
 cmd_next() {
+  if wants_help "$@"; then
+    cat <<'HELP'
+ccp next — Cycle to the next saved profile
+
+Usage: ccp next
+
+Switches to the next profile in alphabetical order, wrapping around
+to the first after the last. Only profiles with saved credentials
+are included in the cycle.
+HELP
+    return
+  fi
+
   local -a profiles
   mapfile -t profiles < <(get_credentialed_profiles)
   local count=${#profiles[@]}
@@ -570,6 +703,20 @@ cmd_next() {
 }
 
 cmd_list() {
+  if wants_help "$@"; then
+    cat <<'HELP'
+ccp list — List all developer profiles
+
+Usage: ccp list
+
+Shows a table of all registered developers with their profile number,
+email, token status (valid/expired/not saved), and whether they're
+the currently active profile. Profile numbers can be used as shortcuts:
+  ccp 2   Switch to profile #2
+HELP
+    return
+  fi
+
   local current
   current=$(current_profile)
 
@@ -628,6 +775,21 @@ cmd_list() {
 }
 
 cmd_whoami() {
+  if wants_help "$@"; then
+    cat <<'HELP'
+ccp whoami — Show the currently active profile
+
+Usage: ccp whoami
+
+Displays the active profile name, email, subscription type, and
+token status. If no active profile is tracked, attempts to match
+the live credentials to a saved profile by email address.
+
+This is the default command when running 'ccp' with no arguments.
+HELP
+    return
+  fi
+
   local current
   current=$(current_profile)
 
@@ -768,15 +930,15 @@ try_as_name() {
 case "${1:-}" in
   "")           cmd_whoami ;;
   help|-h|--help) cmd_help ;;
-  list)         cmd_list ;;
-  next)         cmd_next ;;
-  whoami)       cmd_whoami ;;
-  login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name> --token <token>"; cmd_login "$@" ;;
-  import)       shift; [[ $# -lt 1 ]] && die "Usage: ccp import <name> (JSON on stdin)"; cmd_import "$@" ;;
-  refresh)      shift; cmd_refresh "${1:-}" "${2:-}" ;;
-  logout)       shift; cmd_logout "${1:-}" ;;
-  save)         shift; [[ $# -lt 1 ]] && die "Usage: ccp save <name> [--force]"; cmd_save "$1" "${2:-}" ;;
-  use|switch)   shift; [[ $# -lt 1 ]] && die "Usage: ccp use <name>"; cmd_use "$1" ;;
+  list)         shift; cmd_list "$@" ;;
+  next)         shift; cmd_next "$@" ;;
+  whoami)       shift; cmd_whoami "$@" ;;
+  login)        shift; cmd_login "$@" ;;
+  import)       shift; cmd_import "$@" ;;
+  refresh)      shift; cmd_refresh "$@" ;;
+  logout)       shift; cmd_logout "$@" ;;
+  save)         shift; cmd_save "$@" ;;
+  use|switch)   shift; cmd_use "$@" ;;
   *[!0-9]*)     try_as_name "$1" ;;
   *)            _resolved=$(resolve_number "$1") && cmd_use "$_resolved" ;;
 esac

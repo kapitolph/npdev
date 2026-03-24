@@ -214,9 +214,35 @@ export async function cmdCcp(
   // Intercept `login` subcommand — run locally instead of forwarding to VPS
   if (subArgs[0] === "login" && !isOnVPS()) {
     const args = subArgs.slice(1);
-    if (args.length === 0) {
-      console.error("Usage: npdev ccp login <name> [--token <token>] [--email <email>]");
-      process.exit(1);
+
+    if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+      console.log(`npdev ccp login — Authenticate to Claude and save credentials to VPS
+
+Usage: npdev ccp login <name> [options]
+
+Arguments:
+  <name>              Developer name (must be registered on VPS)
+
+Options:
+  --token <token>     Use a token directly instead of browser OAuth
+  --email <email>     Hint email for the OAuth login page
+  --help, -h          Show this help
+
+OAuth flow (default):
+  Opens a browser on your local machine for Claude OAuth login.
+  After authentication, credentials are automatically transferred
+  to the VPS. Your local Claude setup is backed up and restored.
+
+Token flow (--token):
+  Saves the provided token to the VPS profile directly.
+  Useful when you already have a valid access token.
+
+After login, run 'ccp use <name>' on the VPS to activate the profile.
+
+Examples:
+  npdev ccp login ced              Browser OAuth (recommended)
+  npdev ccp login ced --token sk-… Save a token directly`);
+      return;
     }
 
     const name = args[0];
