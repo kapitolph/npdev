@@ -80,18 +80,12 @@ async function localOAuthLogin(
   const tokenParagraph =
     paragraphEnd !== -1 ? fromToken.slice(0, paragraphEnd) : fromToken.slice(0, 200);
 
-  // Debug
-  console.error("\n[debug] Token paragraph (JSON-escaped):", JSON.stringify(tokenParagraph));
-
   // Strip everything except token-valid chars from the paragraph
   const token = tokenParagraph.replace(/[^A-Za-z0-9_-]/g, "");
   if (!token.startsWith("sk-ant-oat01-") || token.length < 50) {
     console.error("ERROR: Could not parse token from setup-token output.");
-    console.error("[debug] Got:", token);
     process.exit(1);
   }
-
-  console.error("[debug] Extracted token length:", token.length);
   console.log("\nSending token to VPS...");
 
   // 4. Send token to VPS via ccp login --token
