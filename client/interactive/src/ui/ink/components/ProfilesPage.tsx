@@ -374,6 +374,8 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           {" \u00b7 "}
           <Text color={theme.overlay1}>l</Text> login
           {" \u00b7 "}
+          <Text color={theme.overlay1}>r</Text> refresh
+          {" \u00b7 "}
           <Text color={theme.overlay1}>n</Text> next
           {" \u00b7 "}
           <Text color={theme.overlay1}>tab</Text> column

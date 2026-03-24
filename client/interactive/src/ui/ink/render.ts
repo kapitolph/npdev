@@ -71,11 +71,13 @@ export async function renderInkDashboard(
             break;
           }
           case "ccp-login": {
-            await sshInteractive(
-              machine,
-              `bash ~/.vps/claude-profile.sh login '${action.profileName}'`,
-              moshOpts,
-            );
+            if (onVPS) {
+              console.log(`\nTo login, run from your local machine:`);
+              console.log(`  npdev ccp login ${action.profileName}\n`);
+            } else {
+              const { cmdCcp } = await import("../../commands/ccp");
+              await cmdCcp(machine, ["login", action.profileName], {});
+            }
             resolve();
             break;
           }
