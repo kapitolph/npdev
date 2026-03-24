@@ -59,18 +59,36 @@ async function localOAuthLogin(
   }
 
   // 3. Extract the sk-ant-oat01-... token from output
-  //    claude setup-token can hard-wrap the token at 80 cols with optional leading
-  //    spaces on continuation lines. Match the first line, then continuation lines
-  //    (single \n + optional spaces + token chars). Stops at blank lines (\n\n).
-  const tokenBlockMatch = output.match(
-    /sk-ant-oat01-[A-Za-z0-9_-]+(?:\n[ ]*[A-Za-z0-9_-]+)*/,
-  );
-  if (!tokenBlockMatch) {
+  //    claude setup-token prints the token in its own paragraph (blank line before
+  //    and after). Terminal wrapping or control chars can split it across lines.
+  //    Strategy: find the token prefix, grab everything up to the next blank line
+  //    (or double newline), then strip non-token chars from that block.
+  const tokenStart = output.indexOf("sk-ant-oat01-");
+  if (tokenStart === -1) {
     console.error("ERROR: Could not find long-lived token in setup-token output.");
     process.exit(1);
   }
 
-  const token = tokenBlockMatch[0].replace(/[\s]+/g, "");
+  // Grab from token start to next blank line (handles \r\n and \n)
+  const fromToken = output.slice(tokenStart);
+  const paragraphEnd = fromToken.search(/\n\s*\n/);
+  const tokenParagraph = paragraphEnd !== -1 ? fromToken.slice(0, paragraphEnd) : fromToken.slice(0, 200);
+
+  // Debug: show raw bytes so we can diagnose any future issues
+  console.error(
+    "\n[debug] Token paragraph (JSON-escaped):",
+    JSON.stringify(tokenParagraph),
+  );
+
+  // Strip everything except token-valid chars from the paragraph
+  const token = tokenParagraph.replace(/[^A-Za-z0-9_-]/g, "");
+  if (!token.startsWith("sk-ant-oat01-") || token.length < 50) {
+    console.error("ERROR: Could not parse token from setup-token output.");
+    console.error("[debug] Got:", token);
+    process.exit(1);
+  }
+
+  console.error("[debug] Extracted token length:", token.length);
   console.log("\nSending token to VPS...");
 
   // 4. Send token to VPS via ccp login --token
