@@ -69,8 +69,10 @@ Claude Profiles:
   npdev ccp list [--json]         List all profiles
   npdev ccp use <name>            Switch to a profile
   npdev ccp next                  Cycle to next profile
+  npdev ccp login <name>          OAuth login from local machine
   npdev ccp save <name>           Save current credentials
-  npdev ccp login <name>          OAuth login (interactive)
+  npdev ccp refresh [name]        Refresh OAuth token
+  npdev ccp logout [name]         Remove saved credentials
 
 Codex Profiles:
   npdev cxp [--json]              Show current Codex profile
@@ -112,21 +114,28 @@ const COMMANDS_HELP: Record<string, string> = {
 Manage Claude Code credential profiles on the VPS.
 
 Commands:
-  (none)        Show current profile (whoami)
-  list          List all profiles
-  use <name>    Switch to a profile by name
-  next          Cycle to next saved profile
-  save <name>   Save current credentials to a profile
-  login <name>  OAuth login and save credentials
+  (none)           Show current profile (whoami)
+  list             List all profiles
+  use <name>       Switch to a profile by name
+  next             Cycle to next saved profile
+  login <name>     OAuth login from local machine (recommended)
+  save <name>      Save current live credentials to a profile
+  refresh [name]   Refresh OAuth token using stored refresh token
+  logout [name]    Remove saved credentials for a profile
+  import <name>    Import credentials from stdin JSON (used by login)
+
+Run 'npdev ccp <command> --help' for detailed help on any command.
 
 Flags:
   --json    Output as JSON (for scripts/agents)
 
 Examples:
-  npdev ccp
-  npdev ccp list --json
-  npdev ccp use don
-  npdev ccp next`,
+  npdev ccp                        Who am I?
+  npdev ccp list                   Show all profiles
+  npdev ccp login ced              Login via browser OAuth
+  npdev ccp login ced --token sk-… Save a token directly
+  npdev ccp use don                Switch to don's profile
+  npdev ccp next                   Cycle to next profile`,
 
   cxp: `npdev cxp [command] [args...] [--json]
 
@@ -341,7 +350,13 @@ function parseArgs(argv: string[]): ParsedArgs {
         break;
       case "--help":
       case "-h": {
-        // If there's a command before --help, show command-specific help
+        // If there's a command + subcommand (e.g. "ccp login --help"),
+        // pass --help through so the subcommand handler can display its own help
+        if (remaining.length > 1) {
+          remaining.push(argv[i]);
+          break;
+        }
+        // Otherwise show command-level or global help
         const cmd = remaining[0];
         if (cmd && COMMANDS_HELP[cmd]) {
           console.log(COMMANDS_HELP[cmd]);
