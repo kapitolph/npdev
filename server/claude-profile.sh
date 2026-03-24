@@ -266,113 +266,118 @@ cmd_use() {
   fi
 }
 
-cmd_login() {
+cmd_import() {
   local name="$1"
   validate_dev "$name"
 
+  # Read JSON from stdin
+  local input
+  input=$(cat)
+
+  if [[ -z "$input" ]]; then
+    die "No input received on stdin. Pipe credentials JSON to this command."
+  fi
+
+  # Validate JSON
+  if ! echo "$input" | jq empty 2>/dev/null; then
+    die "Invalid JSON on stdin."
+  fi
+
+  # Extract credentials and account
+  local creds account
+  creds=$(echo "$input" | jq -e '.credentials' 2>/dev/null) || die "Missing .credentials in input JSON."
+  account=$(echo "$input" | jq -e '.account' 2>/dev/null) || die "Missing .account in input JSON."
+
+  # Validate credentials has the expected shape
+  echo "$creds" | jq -e '.claudeAiOauth.accessToken' >/dev/null 2>&1 || die "Missing .credentials.claudeAiOauth.accessToken"
+
+  local dest_creds="$DEVELOPERS_DIR/${name}.claude-credentials.json"
+  local dest_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
+
+  # Write profile files
+  printf '%s' "$creds" | jq . > "$dest_creds"
+  chmod 600 "$dest_creds"
+
+  printf '%s' "$account" | jq . > "$dest_acct"
+  chmod 600 "$dest_acct"
+
   local email
-  email=$(dev_email "$name")
+  email=$(echo "$account" | jq -r '.oauthAccount.emailAddress // "unknown"' 2>/dev/null)
 
-  # OAuth constants (from Claude Code CLI)
-  local CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-  local AUTH_URL="https://claude.ai/oauth/authorize"
-  local TOKEN_URL="https://platform.claude.com/v1/oauth/token"
-  local REDIRECT_URI="https://platform.claude.com/oauth/code/callback"
-  local SCOPES="org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers"
+  local status
+  status=$(token_status "$dest_creds")
 
-  # Generate PKCE code_verifier (43-128 chars, URL-safe base64)
-  local code_verifier
-  code_verifier=$(openssl rand -base64 96 | tr -d '=+/' | head -c 128)
+  if $JSON_MODE; then
+    jq -n --arg profile "$name" --arg email "$email" --arg token_status "$status" \
+      '{"ok":true,"action":"imported","profile":$profile,"email":$email,"token_status":$token_status}'
+  else
+    echo "Imported Claude profile for '$name' ($email) — token $status"
+    echo "Profile saved. Run 'ccp use $name' to activate."
+  fi
+}
 
-  # Generate code_challenge (SHA256 of verifier, URL-safe base64)
-  local code_challenge
-  code_challenge=$(printf '%s' "$code_verifier" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+cmd_login() {
+  local name="$1"
+  shift
+  validate_dev "$name"
 
-  # Generate random state
-  local state
-  state=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
+  # Parse --token flag
+  local token=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --token) token="${2:-}"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
 
-  # Build authorization URL
-  local scope_encoded
-  scope_encoded=$(printf '%s' "$SCOPES" | sed 's/ /+/g')
-
-  local auth_link="${AUTH_URL}?code=true&client_id=${CLIENT_ID}&response_type=code&redirect_uri=$(printf '%s' "$REDIRECT_URI" | jq -sRr @uri)&scope=${scope_encoded}&code_challenge=${code_challenge}&code_challenge_method=S256&state=${state}"
-
-  if [[ -n "$email" ]]; then
-    auth_link="${auth_link}&login_hint=$(printf '%s' "$email" | jq -sRr @uri)"
+  if [[ -z "$token" ]]; then
+    die "Usage: ccp login <name> --token <token>
+On VPS, only --token login is supported. For browser-based OAuth, run:
+  npdev ccp login <name>"
   fi
 
-  echo ""
-  echo "Login for profile: $name ($email)"
-  echo ""
-  echo "Open this URL in your browser:"
-  echo ""
-  echo "  $auth_link"
-  echo ""
-  echo "After logging in, you'll see an authorization code."
-  echo ""
-  read -rp "Paste the code here: " auth_code
-
-  if [[ -z "$auth_code" ]]; then
-    die "No code entered."
-  fi
-
-  # Exchange authorization code for tokens
-  local response
-  response=$(curl -sS -X POST "$TOKEN_URL" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n \
-      --arg code "$auth_code" \
-      --arg verifier "$code_verifier" \
-      --arg redirect "$REDIRECT_URI" \
-      --arg client_id "$CLIENT_ID" \
-      '{
-        grant_type: "authorization_code",
-        code: $code,
-        code_verifier: $verifier,
-        redirect_uri: $redirect,
-        client_id: $client_id
-      }')" 2>&1)
-
-  # Check for error
-  if ! echo "$response" | jq -e '.access_token' >/dev/null 2>&1; then
-    local err_msg
-    err_msg=$(echo "$response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null || echo "$response")
-    die "Token exchange failed: $err_msg"
-  fi
-
-  # Extract tokens
-  local access_token refresh_token expires_in
-  access_token=$(echo "$response" | jq -r '.access_token')
-  refresh_token=$(echo "$response" | jq -r '.refresh_token // empty')
-  expires_in=$(echo "$response" | jq -r '.expires_in // 86400')
-
-  # Calculate expiry timestamp in milliseconds
+  # Calculate expiry (assume 10 days for manually provided tokens)
   local now_ms expires_at
   now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
-  expires_at=$((now_ms + expires_in * 1000))
+  expires_at=$((now_ms + 864000 * 1000))
 
-  # Build credentials JSON (same structure as Claude Code)
+  # Build credentials JSON
   local creds
   creds=$(jq -n \
-    --arg at "$access_token" \
-    --arg rt "$refresh_token" \
+    --arg at "$token" \
     --argjson ea "$expires_at" \
     '{
       claudeAiOauth: {
         accessToken: $at,
-        refreshToken: $rt,
+        refreshToken: "",
         expiresAt: $ea
       }
     }')
 
-  # Write to live credentials file
-  printf '%s' "$creds" | jq . > "$CREDENTIALS_FILE"
-  chmod 600 "$CREDENTIALS_FILE"
+  local dest_creds="$DEVELOPERS_DIR/${name}.claude-credentials.json"
+  printf '%s' "$creds" | jq . > "$dest_creds"
+  chmod 600 "$dest_creds"
 
-  # Save for this profile and set as active
-  cmd_save "$name" "--force"
-  set_active_profile "$name"
+  # Create a minimal account file if one doesn't already exist
+  local dest_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
+  if [[ ! -f "$dest_acct" ]]; then
+    local email
+    email=$(dev_email "$name")
+    jq -n --arg email "$email" \
+      '{"oauthAccount":{"emailAddress":$email}}' > "$dest_acct"
+    chmod 600 "$dest_acct"
+  fi
+
+  local status
+  status=$(token_status "$dest_creds")
+
+  if $JSON_MODE; then
+    jq -n --arg profile "$name" --arg token_status "$status" \
+      '{"ok":true,"action":"login","profile":$profile,"token_status":$token_status}'
+  else
+    echo "Saved token for '$name' — $status"
+    echo "Profile saved. Run 'ccp use $name' to activate."
+  fi
 }
 
 cmd_refresh() {
@@ -696,7 +701,8 @@ cmd_help() {
       {"name":"list","usage":"ccp list","description":"List all profiles with numbers"},
       {"name":"use","usage":"ccp use <name>","description":"Switch to a profile by name"},
       {"name":"next","usage":"ccp next","description":"Cycle to next saved profile"},
-      {"name":"login","usage":"ccp login <name>","description":"OAuth login and save credentials"},
+      {"name":"login","usage":"ccp login <name> --token <token>","description":"Save token to profile"},
+      {"name":"import","usage":"ccp import <name>","description":"Import credentials from stdin JSON"},
       {"name":"save","usage":"ccp save <name>","description":"Save current credentials to a profile"},
       {"name":"refresh","usage":"ccp refresh [name] [--force]","description":"Refresh token (skips if >1d remaining, --force to override)"},
       {"name":"logout","usage":"ccp logout [name]","description":"Remove saved credentials for a profile"},
@@ -717,7 +723,8 @@ Commands:
   <name>        Shortcut for 'use <name>'
   <number>      Switch to profile by number (from list)
   next          Cycle to next saved profile
-  login <name>  OAuth login and save credentials
+  login <name> --token <token>  Save token to profile
+  import <name> Import credentials from stdin JSON
   refresh [name] [--force]  Refresh token (skips if >1d left, --force overrides)
   logout [name] Remove saved credentials (default: active profile)
   save <name>   Save current credentials to a profile
@@ -764,7 +771,8 @@ case "${1:-}" in
   list)         cmd_list ;;
   next)         cmd_next ;;
   whoami)       cmd_whoami ;;
-  login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name>"; cmd_login "$1" ;;
+  login)        shift; [[ $# -lt 1 ]] && die "Usage: ccp login <name> --token <token>"; cmd_login "$@" ;;
+  import)       shift; [[ $# -lt 1 ]] && die "Usage: ccp import <name> (JSON on stdin)"; cmd_import "$@" ;;
   refresh)      shift; cmd_refresh "${1:-}" "${2:-}" ;;
   logout)       shift; cmd_logout "${1:-}" ;;
   save)         shift; [[ $# -lt 1 ]] && die "Usage: ccp save <name> [--force]"; cmd_save "$1" "${2:-}" ;;

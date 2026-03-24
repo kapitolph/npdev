@@ -24,6 +24,25 @@ export async function sshExec(
   return { stdout: stdout.trim(), exitCode };
 }
 
+/** Run a command with stdin piped from a string (locally on VPS, or via SSH) */
+export async function sshExecWithInput(
+  machine: Machine,
+  command: string,
+  input: string,
+): Promise<{ stdout: string; exitCode: number }> {
+  const args = isOnVPS()
+    ? ["bash", "-c", command]
+    : ["ssh", ...SSH_OPTS, sshTarget(machine), command];
+  const proc = Bun.spawn(args, {
+    stdin: new Blob([input]),
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  const stdout = await new Response(proc.stdout).text();
+  const exitCode = await proc.exited;
+  return { stdout: stdout.trim(), exitCode };
+}
+
 /** Run an interactive command with TTY passthrough (locally on VPS, or via SSH/mosh) */
 export async function sshInteractive(
   machine: Machine,
