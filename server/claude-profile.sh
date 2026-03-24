@@ -7,8 +7,6 @@
 set -euo pipefail
 
 DEVELOPERS_DIR="${DEVELOPERS_DIR:-$HOME/.vps/developers}"
-CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
-ACCOUNT_FILE="${ACCOUNT_FILE:-$HOME/.claude.json}"
 REGISTRY="${REGISTRY:-$HOME/.vps/sessions.yaml}"
 ACTIVE_PROFILE_FILE="${ACTIVE_PROFILE_FILE:-$HOME/.claude/.active-profile}"
 ACTIVE_TOKEN_FILE="${ACTIVE_TOKEN_FILE:-$HOME/.claude/.active-token}"
@@ -89,32 +87,21 @@ set_active_profile() {
   printf '%s' "$name" > "$ACTIVE_PROFILE_FILE"
 }
 
-# Auto-save current live credentials back to the active profile before switching.
-# This captures any auto-refreshed tokens that Claude CLI updated silently.
+# Auto-save current env var token back to the active profile before switching.
 auto_save_current() {
-  [[ -f "$CREDENTIALS_FILE" ]] || return 0
-  [[ -f "$ACCOUNT_FILE" ]] || return 0
+  [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || return 0
 
   local current
   current=$(current_profile)
   [[ -z "$current" ]] && return 0
 
-  # Silently update the saved credentials with the live (possibly refreshed) ones
-  cp "$CREDENTIALS_FILE" "$DEVELOPERS_DIR/${current}.claude-credentials.json"
-  chmod 600 "$DEVELOPERS_DIR/${current}.claude-credentials.json"
-  jq '{userID, oauthAccount}' "$ACCOUNT_FILE" > "$DEVELOPERS_DIR/${current}.claude-account.json"
-  chmod 600 "$DEVELOPERS_DIR/${current}.claude-account.json"
+  local saved_creds="$DEVELOPERS_DIR/${current}.claude-credentials.json"
+  [[ -f "$saved_creds" ]] || return 0
 
-  # If CLAUDE_CODE_OAUTH_TOKEN is set, update the saved profile's accessToken
-  if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
-    local saved_creds="$DEVELOPERS_DIR/${current}.claude-credentials.json"
-    if [[ -f "$saved_creds" ]]; then
-      local tmp
-      tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$saved_creds")
-      printf '%s' "$tmp" > "$saved_creds"
-      chmod 600 "$saved_creds"
-    fi
-  fi
+  local tmp
+  tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$saved_creds")
+  printf '%s' "$tmp" > "$saved_creds"
+  chmod 600 "$saved_creds"
 }
 
 # Check token expiry. Returns: "valid (Xd)", "expired", or "unknown"
@@ -175,7 +162,7 @@ check_active_sessions() {
 cmd_save() {
   if wants_help "$@" || [[ $# -lt 1 ]]; then
     cat <<'HELP'
-ccp save — Save current live credentials to a named profile
+ccp save — Save the current CLAUDE_CODE_OAUTH_TOKEN to a named profile
 
 Usage: ccp save <name> [--force]
 
@@ -183,9 +170,8 @@ Arguments:
   <name>     Developer name (must be registered in ~/.vps/developers/)
   --force    Overwrite if profile already exists
 
-Copies the current live ~/.claude/.credentials.json and account info
-from ~/.claude.json into the developer's profile files. Rejects the
-save if another profile already uses the same email address.
+Captures the current CLAUDE_CODE_OAUTH_TOKEN env var into the
+developer's profile credential file.
 HELP
     return
   fi
@@ -194,8 +180,9 @@ HELP
   local force="${2:-}"
   validate_dev "$name"
 
+  [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || die "CLAUDE_CODE_OAUTH_TOKEN is not set. Nothing to save."
+
   local dest_creds="$DEVELOPERS_DIR/${name}.claude-credentials.json"
-  local dest_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
 
   # Check if profile already exists
   if [[ -f "$dest_creds" ]] && [[ "$force" != "--force" ]]; then
@@ -206,60 +193,37 @@ HELP
     return 1
   fi
 
-  # Validate source files exist
-  [[ -f "$CREDENTIALS_FILE" ]] || die "No credentials file found at $CREDENTIALS_FILE"
-  [[ -f "$ACCOUNT_FILE" ]] || die "No account file found at $ACCOUNT_FILE"
-
-  # Validate JSON before writing
-  jq empty "$CREDENTIALS_FILE" 2>/dev/null || die "Invalid JSON in $CREDENTIALS_FILE"
-  jq empty "$ACCOUNT_FILE" 2>/dev/null || die "Invalid JSON in $ACCOUNT_FILE"
-
-  # Copy credentials verbatim
-  cp "$CREDENTIALS_FILE" "$dest_creds"
-  chmod 600 "$dest_creds"
-
-  # If CLAUDE_CODE_OAUTH_TOKEN is set, update the saved credentials with it
-  if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+  # Update existing credential file or create new one
+  if [[ -f "$dest_creds" ]]; then
     local tmp
     tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$dest_creds")
     printf '%s' "$tmp" > "$dest_creds"
-    chmod 600 "$dest_creds"
+  else
+    # Create new credential file (same shape as cmd_login --token)
+    local now_ms expires_at
+    now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
+    expires_at=$((now_ms + 864000 * 1000))
+    jq -n --arg at "$CLAUDE_CODE_OAUTH_TOKEN" --argjson ea "$expires_at" \
+      '{ claudeAiOauth: { accessToken: $at, refreshToken: "", expiresAt: $ea } }' > "$dest_creds"
   fi
+  chmod 600 "$dest_creds"
 
-  # Extract account fields
-  jq '{userID, oauthAccount}' "$ACCOUNT_FILE" > "$dest_acct"
-  chmod 600 "$dest_acct"
-
-  local email
-  email=$(jq -r '.oauthAccount.emailAddress // "unknown"' "$dest_acct")
-
-  # Guard: reject if another profile already uses this email
-  if [[ "$email" != "unknown" ]]; then
-    for env_file in "$DEVELOPERS_DIR"/*.env; do
-      local other
-      other=$(basename "$env_file" .env)
-      [[ "$other" == "$name" ]] && continue
-      local other_acct="$DEVELOPERS_DIR/${other}.claude-account.json"
-      [[ -f "$other_acct" ]] || continue
-      local other_email
-      other_email=$(jq -r '.oauthAccount.emailAddress // empty' "$other_acct" 2>/dev/null) || true
-      if [[ "$other_email" == "$email" ]]; then
-        # Roll back written files
-        rm -f "$dest_creds" "$dest_acct"
-        die "Email '$email' is already saved under profile '$other'. Each profile must use a unique account."
-      fi
-    done
+  # Create account file if it doesn't exist
+  local dest_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
+  if [[ ! -f "$dest_acct" ]]; then
+    local email
+    email=$(dev_email "$name")
+    jq -n --arg email "$email" \
+      '{"oauthAccount":{"emailAddress":$email}}' > "$dest_acct"
+    chmod 600 "$dest_acct"
   fi
 
   set_active_profile "$name"
+  printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" > "$ACTIVE_TOKEN_FILE"
+  chmod 600 "$ACTIVE_TOKEN_FILE"
 
-  # Write active token for env var consumption
-  local saved_token
-  saved_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$dest_creds" 2>/dev/null)
-  if [[ -n "$saved_token" ]]; then
-    printf '%s' "$saved_token" > "$ACTIVE_TOKEN_FILE"
-    chmod 600 "$ACTIVE_TOKEN_FILE"
-  fi
+  local email
+  email=$(saved_email "$name")
 
   if $JSON_MODE; then
     jq -n --arg profile "$name" --arg email "$email" \
@@ -279,10 +243,9 @@ Usage: ccp use <name>
 Arguments:
   <name>   Developer name (must have saved credentials)
 
-Activates the profile by copying saved credentials into the live
-~/.claude/.credentials.json and merging account info into ~/.claude.json.
-Auto-saves the currently active profile's credentials first (captures
-any tokens that Claude CLI refreshed silently).
+Writes the profile's accessToken to ~/.claude/.active-token so new
+shells pick it up via CLAUDE_CODE_OAUTH_TOKEN. Auto-saves the current
+env var token back to the outgoing profile first.
 
 Shortcuts:
   ccp <name>     Same as 'ccp use <name>'
@@ -296,47 +259,31 @@ HELP
   validate_dev "$name"
 
   local src_creds="$DEVELOPERS_DIR/${name}.claude-credentials.json"
-  local src_acct="$DEVELOPERS_DIR/${name}.claude-account.json"
 
-  [[ -f "$src_creds" ]] || die "No saved credentials for '$name'. Run: ccp login $name"
-  [[ -f "$src_acct" ]] || die "No saved account for '$name'. Run: ccp login $name"
+  [[ -f "$src_creds" ]] || die "No saved credentials for '$name'. Run: npdev ccp login $name"
 
   # Warn about active sessions
   check_active_sessions "$name"
 
-  # Auto-save current profile's credentials before overwriting (captures refreshed tokens)
+  # Auto-save current env var token back to outgoing profile
   auto_save_current
 
   # Check token expiry and warn
   local status
   status=$(token_status "$src_creds")
   if [[ "$status" == "expired" ]]; then
-    warn "Token for '$name' is expired. Claude CLI should handle refresh automatically."
+    warn "Token for '$name' is expired. Run: npdev ccp login $name"
   fi
 
-  # Restore credentials
-  cp "$src_creds" "$CREDENTIALS_FILE"
-  chmod 600 "$CREDENTIALS_FILE"
-
-  # Merge account fields into .claude.json atomically
-  local tmp_file="${ACCOUNT_FILE}.tmp"
-  if [[ -f "$ACCOUNT_FILE" ]]; then
-    jq --slurpfile acct "$src_acct" '. * $acct[0]' "$ACCOUNT_FILE" > "$tmp_file"
-  else
-    cp "$src_acct" "$tmp_file"
-  fi
-  mv "$tmp_file" "$ACCOUNT_FILE"
+  # Write active token
+  local token
+  token=$(jq -r '.claudeAiOauth.accessToken // empty' "$src_creds" 2>/dev/null)
+  [[ -n "$token" ]] || die "No accessToken found in credentials for '$name'."
+  printf '%s' "$token" > "$ACTIVE_TOKEN_FILE"
+  chmod 600 "$ACTIVE_TOKEN_FILE"
 
   # Track active profile
   set_active_profile "$name"
-
-  # Write active token for env var consumption
-  local token
-  token=$(jq -r '.claudeAiOauth.accessToken // empty' "$src_creds" 2>/dev/null)
-  if [[ -n "$token" ]]; then
-    printf '%s' "$token" > "$ACTIVE_TOKEN_FILE"
-    chmod 600 "$ACTIVE_TOKEN_FILE"
-  fi
 
   local email
   email=$(saved_email "$name")
@@ -538,12 +485,11 @@ HELP
 
   rm -f "$creds_file" "$acct_file"
 
-  # If this was the active profile, clear the active state, live credentials, and active token
+  # If this was the active profile, clear the active state and token
   local current
   current=$(current_profile)
   if [[ "$current" == "$name" ]]; then
     rm -f "$ACTIVE_PROFILE_FILE"
-    rm -f "$CREDENTIALS_FILE"
     rm -f "$ACTIVE_TOKEN_FILE"
   fi
 
@@ -693,65 +639,26 @@ HELP
   current=$(current_profile)
 
   if [[ -z "$current" ]]; then
-    # Try to find matching profile by email before giving up
-    if [[ -f "$ACCOUNT_FILE" ]]; then
-      local live_email
-      live_email=$(jq -r '.oauthAccount.emailAddress // empty' "$ACCOUNT_FILE" 2>/dev/null)
-      if [[ -n "$live_email" ]]; then
-        for env_file in "$DEVELOPERS_DIR"/*.env; do
-          local pname
-          pname=$(basename "$env_file" .env)
-          local saved
-          saved=$(saved_email "$pname")
-          if [[ "$saved" == "$live_email" ]]; then
-            current="$pname"
-            set_active_profile "$current"
-            break
-          fi
-        done
-      fi
-    fi
-  fi
-
-  if [[ -z "$current" ]]; then
     if $JSON_MODE; then
-      if [[ -f "$ACCOUNT_FILE" ]]; then
-        local email
-        email=$(jq -r '.oauthAccount.emailAddress // "unknown"' "$ACCOUNT_FILE" 2>/dev/null)
-        jq -n --arg email "$email" \
-          '{"ok":true,"profile":null,"email":$email,"message":"No matching saved profile for current credentials."}'
-      else
-        jq -n '{"ok":true,"profile":null,"message":"No credentials found."}'
-      fi
+      jq -n '{"ok":true,"profile":null,"message":"No active profile. Run: ccp use <name>"}'
     else
-      echo "No matching saved profile for current credentials."
-      # Still show what we can from live files
-      if [[ -f "$ACCOUNT_FILE" ]]; then
-        local email sub
-        email=$(jq -r '.oauthAccount.emailAddress // "unknown"' "$ACCOUNT_FILE" 2>/dev/null)
-        sub=$(jq -r '.oauthAccount // empty | keys[]' "$ACCOUNT_FILE" 2>/dev/null | head -1)
-        echo "Current account: $email"
-        echo "Hint: run 'ccp save <name>' to save these credentials to a profile."
-      fi
+      echo "No active profile. Run: ccp use <name>"
     fi
     return
   fi
 
-  local email sub status
+  local email status
   email=$(saved_email "$current")
-  sub="unknown"
-  status="unknown"
-  [[ -f "$CREDENTIALS_FILE" ]] && {
-    sub=$(jq -r '.claudeAiOauth.subscriptionType // "unknown"' "$CREDENTIALS_FILE" 2>/dev/null)
-    status=$(token_status "$CREDENTIALS_FILE")
-  }
+  [[ -z "$email" ]] && email=$(dev_email "$current")
+
+  local saved_creds="$DEVELOPERS_DIR/${current}.claude-credentials.json"
+  status=$(token_status "$saved_creds")
 
   if $JSON_MODE; then
-    jq -n --arg profile "$current" --arg email "$email" \
-      --arg subscription "$sub" --arg token_status "$status" \
-      '{"ok":true,"profile":$profile,"email":$email,"subscription":$subscription,"token_status":$token_status}'
+    jq -n --arg profile "$current" --arg email "$email" --arg token_status "$status" \
+      '{"ok":true,"profile":$profile,"email":$email,"token_status":$token_status}'
   else
-    echo "Active profile: $current ($email) | ${sub:-unknown} | token ${status:-unknown}"
+    echo "Active profile: $current (${email:-unknown}) | token ${status:-unknown}"
   fi
 }
 
