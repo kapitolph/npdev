@@ -8,13 +8,10 @@ import type { Machine } from "../types";
 const REMOTE_SCRIPT = "~/.vps/claude-profile.sh";
 
 async function ensureScript(machine: Machine): Promise<void> {
-  const { exitCode } = await sshExec(machine, `test -f ${REMOTE_SCRIPT}`);
-  if (exitCode !== 0) {
-    const localPath = join(import.meta.dir, "../../../../server/claude-profile.sh");
-    const result = await scpUpload(machine, localPath, "/home/dev/.vps/claude-profile.sh");
-    if (result.exitCode !== 0) throw new Error(`Failed to install ccp: ${result.error}`);
-    await sshExec(machine, `chmod +x ${REMOTE_SCRIPT}`);
-  }
+  const localPath = join(import.meta.dir, "../../../../server/claude-profile.sh");
+  const result = await scpUpload(machine, localPath, "/home/dev/.vps/claude-profile.sh");
+  if (result.exitCode !== 0) throw new Error(`Failed to sync ccp: ${result.error}`);
+  await sshExec(machine, `chmod +x ${REMOTE_SCRIPT}`);
 }
 
 // ─── Local credential helpers ─────────────────────────────────────────────────
