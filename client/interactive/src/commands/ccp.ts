@@ -1,5 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, copyFileSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { scpUpload, sshExec, sshExecWithInput, sshInteractive } from "../lib/ssh";
 import { isOnVPS } from "../lib/config";
@@ -18,75 +17,6 @@ async function ensureScript(machine: Machine): Promise<void> {
     // Compiled binary — just verify script exists on VPS
     const { exitCode } = await sshExec(machine, `test -f ${REMOTE_SCRIPT}`);
     if (exitCode !== 0) throw new Error("ccp script not found on VPS. Run 'npdev install ccp' on the VPS.");
-  }
-}
-
-// ─── Local credential helpers ─────────────────────────────────────────────────
-
-const CLAUDE_DIR = join(homedir(), ".claude");
-const CREDS_FILE = join(CLAUDE_DIR, ".credentials.json");
-const ACCOUNT_FILE = join(homedir(), ".claude.json");
-const BACKUP_CREDS = join(CLAUDE_DIR, ".credentials.json.npdev-backup");
-const BACKUP_ACCOUNT = join(homedir(), ".claude.json.npdev-backup");
-
-function backupLocalCreds(): void {
-  if (existsSync(CREDS_FILE)) copyFileSync(CREDS_FILE, BACKUP_CREDS);
-  if (existsSync(ACCOUNT_FILE)) copyFileSync(ACCOUNT_FILE, BACKUP_ACCOUNT);
-}
-
-function restoreLocalCreds(): void {
-  try {
-    if (existsSync(BACKUP_CREDS)) {
-      copyFileSync(BACKUP_CREDS, CREDS_FILE);
-      unlinkSync(BACKUP_CREDS);
-    }
-    if (existsSync(BACKUP_ACCOUNT)) {
-      copyFileSync(BACKUP_ACCOUNT, ACCOUNT_FILE);
-      unlinkSync(BACKUP_ACCOUNT);
-    }
-  } catch (err) {
-    console.error(`WARNING: Failed to restore local credentials backup: ${err}`);
-    console.error("Your local Claude session may need re-authentication.");
-  }
-}
-
-function readLocalCredentials(): { credentials: object; account: object } | null {
-  try {
-    let creds: object;
-
-    if (platform() === "darwin") {
-      // macOS: try keychain first
-      const result = Bun.spawnSync([
-        "security", "find-generic-password",
-        "-a", process.env.USER || "",
-        "-s", "Claude Code-credentials",
-        "-w",
-      ], { stdout: "pipe", stderr: "pipe" });
-
-      if (result.exitCode === 0) {
-        const keychainData = new TextDecoder().decode(result.stdout).trim();
-        creds = JSON.parse(keychainData);
-      } else if (existsSync(CREDS_FILE)) {
-        creds = JSON.parse(readFileSync(CREDS_FILE, "utf-8"));
-      } else {
-        return null;
-      }
-    } else {
-      // Linux / other: read from file
-      if (!existsSync(CREDS_FILE)) return null;
-      creds = JSON.parse(readFileSync(CREDS_FILE, "utf-8"));
-    }
-
-    // Read account info
-    if (!existsSync(ACCOUNT_FILE)) return null;
-    const accountFull = JSON.parse(readFileSync(ACCOUNT_FILE, "utf-8"));
-    const account: Record<string, unknown> = {};
-    if (accountFull.oauthAccount) account.oauthAccount = accountFull.oauthAccount;
-    if (accountFull.userID) account.userID = accountFull.userID;
-
-    return { credentials: creds, account };
-  } catch {
-    return null;
   }
 }
 
@@ -109,57 +39,37 @@ async function localOAuthLogin(
     process.exit(1);
   }
 
-  // 2. Backup local credentials
-  console.log("Backing up local Claude credentials...");
-  backupLocalCreds();
-
-  // 3. Run `claude setup-token` locally (long-lived OAuth token)
-  console.log("Starting Claude setup-token (browser will open)...");
+  // 2. Run `claude setup-token` and capture the long-lived token from stdout
+  console.log("Running claude setup-token (browser will open)...");
   const loginProc = Bun.spawn(["claude", "setup-token"], {
-    stdout: "inherit",
+    stdout: "pipe",
     stderr: "inherit",
     stdin: "inherit",
   });
+
+  const output = await new Response(loginProc.stdout).text();
   const loginExit = await loginProc.exited;
 
+  // Print output so user sees the flow
+  process.stdout.write(output);
+
   if (loginExit !== 0) {
-    console.error("Claude login failed. Restoring local credentials...");
-    restoreLocalCreds();
+    console.error("claude setup-token failed.");
     process.exit(1);
   }
 
-  // 4. Read newly created credentials
-  console.log("Reading new credentials...");
-  const localCreds = readLocalCredentials();
-  if (!localCreds) {
-    console.error("ERROR: Could not read credentials after login. Restoring backup...");
-    restoreLocalCreds();
+  // 3. Extract the sk-ant-oat01-... token from output
+  const tokenMatch = output.match(/sk-ant-oat01-[A-Za-z0-9_-]+/);
+  if (!tokenMatch) {
+    console.error("ERROR: Could not find long-lived token in setup-token output.");
     process.exit(1);
   }
 
-  // 5. Restore original local credentials
-  console.log("Restoring local Claude credentials...");
-  restoreLocalCreds();
+  const token = tokenMatch[0];
+  console.log("\nSending token to VPS...");
 
-  // 6. Pipe credentials to VPS via ccp import
-  const payload = JSON.stringify(localCreds);
-  console.log("Sending credentials to VPS...");
-
-  const escaped = `'${name.replace(/'/g, "'\\''")}'`;
-  const importCmd = `bash ${REMOTE_SCRIPT} import ${escaped}`;
-  const { stdout, exitCode } = await sshExecWithInput(machine, importCmd, payload);
-
-  if (exitCode !== 0) {
-    console.error("ERROR: Failed to import credentials to VPS.");
-    // Fallback: print base64 for manual import
-    const b64 = Buffer.from(payload).toString("base64");
-    console.error("\nFallback: run this on the VPS manually:");
-    console.error(`  echo '${b64}' | base64 -d | bash ${REMOTE_SCRIPT} import ${escaped}`);
-    process.exit(1);
-  }
-
-  if (stdout) console.log(stdout);
-  console.log(`\nRun 'ccp use ${name}' on VPS to activate.`);
+  // 4. Send token to VPS via ccp login --token
+  await localTokenLogin(machine, name, token);
 }
 
 async function localTokenLogin(
@@ -181,7 +91,7 @@ async function localTokenLogin(
 
   // Build minimal credentials JSON and send via import
   const nowMs = Date.now();
-  const expiresAt = nowMs + 864000 * 1000; // 10 days
+  const expiresAt = nowMs + 365 * 86400 * 1000; // 1 year (setup-token tokens)
   const payload = JSON.stringify({
     credentials: {
       claudeAiOauth: {
@@ -233,9 +143,8 @@ Options:
   --help, -h          Show this help
 
 OAuth flow (default):
-  Opens a browser on your local machine for Claude OAuth login.
-  After authentication, credentials are automatically transferred
-  to the VPS. Your local Claude setup is backed up and restored.
+  Runs 'claude setup-token' to create a long-lived OAuth token.
+  Opens a browser for authentication, then sends the token to VPS.
 
 Token flow (--token):
   Saves the provided token to the VPS profile directly.
