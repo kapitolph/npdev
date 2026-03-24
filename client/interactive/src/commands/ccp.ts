@@ -59,26 +59,29 @@ async function localOAuthLogin(
   }
 
   // 3. Extract the sk-ant-oat01-... token from output
-  //    claude setup-token prints the token in its own paragraph (blank line before
-  //    and after). Terminal wrapping or control chars can split it across lines.
-  //    Strategy: find the token prefix, grab everything up to the next blank line
-  //    (or double newline), then strip non-token chars from that block.
-  const tokenStart = output.indexOf("sk-ant-oat01-");
+  //    claude setup-token uses ANSI escape sequences instead of plain text:
+  //    \x1b[NB = cursor down N (instead of \n), \x1b[NC = cursor right N (instead of space)
+  //    Normalize these to plain text first, then extract the token paragraph.
+  const normalized = output
+    .replace(/\r/g, "")
+    .replace(/\x1b\[(\d+)B/g, (_, n) => "\n".repeat(Number(n)))
+    .replace(/\x1b\[(\d+)C/g, (_, n) => " ".repeat(Number(n)))
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""); // strip any remaining ANSI
+
+  const tokenStart = normalized.indexOf("sk-ant-oat01-");
   if (tokenStart === -1) {
     console.error("ERROR: Could not find long-lived token in setup-token output.");
     process.exit(1);
   }
 
-  // Grab from token start to next blank line (handles \r\n and \n)
-  const fromToken = output.slice(tokenStart);
+  // Grab from token start to next blank line
+  const fromToken = normalized.slice(tokenStart);
   const paragraphEnd = fromToken.search(/\n\s*\n/);
-  const tokenParagraph = paragraphEnd !== -1 ? fromToken.slice(0, paragraphEnd) : fromToken.slice(0, 200);
+  const tokenParagraph =
+    paragraphEnd !== -1 ? fromToken.slice(0, paragraphEnd) : fromToken.slice(0, 200);
 
-  // Debug: show raw bytes so we can diagnose any future issues
-  console.error(
-    "\n[debug] Token paragraph (JSON-escaped):",
-    JSON.stringify(tokenParagraph),
-  );
+  // Debug
+  console.error("\n[debug] Token paragraph (JSON-escaped):", JSON.stringify(tokenParagraph));
 
   // Strip everything except token-valid chars from the paragraph
   const token = tokenParagraph.replace(/[^A-Za-z0-9_-]/g, "");
