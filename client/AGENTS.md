@@ -48,9 +48,18 @@ Host np-dev-1
   User <user from machines.yaml>
   IdentityFile ~/.ssh/vps/id_<name>_ed25519
   IdentitiesOnly yes
+  AddKeysToAgent yes
   ServerAliveInterval 60
   ServerAliveCountMax 3
 ```
+
+If the local machine is macOS (check with `uname -s` — returns "Darwin"), also add `UseKeychain yes` to the host entry. This persists the passphrase in the macOS Keychain so the developer doesn't need to re-enter it after a reboot:
+
+```
+  UseKeychain yes
+```
+
+Do **not** add `UseKeychain` on Linux — it's an unrecognized option and will produce warnings.
 
 **CRITICAL — `IdentitiesOnly yes` and correct `IdentityFile`**:
 - `IdentitiesOnly yes` is **required**. Without it, SSH tries every key in the agent and on disk before using the one specified. If the developer has multiple SSH keys (GitHub, other servers, etc.), SSH may exhaust its authentication attempts with the wrong keys and get "Permission denied" before ever trying the VPS key. This is the #1 cause of "Permission denied" issues for new developers.
