@@ -59,15 +59,18 @@ async function localOAuthLogin(
   }
 
   // 3. Extract the sk-ant-oat01-... token from output
-  //    Terminal wrapping can split the token across lines, so we grab all lines
-  //    between the token prefix and the next blank line, then strip whitespace.
-  const tokenBlockMatch = output.match(/sk-ant-oat01-[A-Za-z0-9_-]+(?:\n[A-Za-z0-9_-]+)*/);
+  //    claude setup-token can hard-wrap the token at 80 cols with optional leading
+  //    spaces on continuation lines. Match the first line, then continuation lines
+  //    (single \n + optional spaces + token chars). Stops at blank lines (\n\n).
+  const tokenBlockMatch = output.match(
+    /sk-ant-oat01-[A-Za-z0-9_-]+(?:\n[ ]*[A-Za-z0-9_-]+)*/,
+  );
   if (!tokenBlockMatch) {
     console.error("ERROR: Could not find long-lived token in setup-token output.");
     process.exit(1);
   }
 
-  const token = tokenBlockMatch[0].replace(/\n/g, "");
+  const token = tokenBlockMatch[0].replace(/[\s]+/g, "");
   console.log("\nSending token to VPS...");
 
   // 4. Send token to VPS via ccp login --token
