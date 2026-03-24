@@ -121,36 +121,6 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
     setActionInProgress(false);
   }, [currentList.length, focusColumn, machine, refresh, codexRefresh, showStatus, actionInProgress]);
 
-  const handleRefreshToken = useCallback(async () => {
-    if (actionInProgress) return;
-    if (focusColumn === "codex") {
-      showStatus("Codex manages token refresh internally");
-      return;
-    }
-    const active = profiles.find((p) => p.active);
-    if (!active) {
-      showStatus("No active profile to refresh");
-      return;
-    }
-    setActionInProgress(true);
-    try {
-      const { stdout } = await sshExec(
-        machine,
-        `bash ~/.vps/claude-profile.sh refresh '${active.name}' --json`,
-      );
-      const parsed = JSON.parse(stdout);
-      showStatus(
-        parsed.ok
-          ? `Refreshed token for ${active.name} — ${parsed.token_status}`
-          : `Refresh failed: ${parsed.error || "unknown error"}`,
-      );
-      refresh();
-    } catch {
-      showStatus("Token refresh failed");
-    }
-    setActionInProgress(false);
-  }, [focusColumn, profiles, machine, refresh, showStatus, actionInProgress]);
-
   // --- Input handling ---
 
   useInput((input, key) => {
@@ -207,22 +177,6 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       return;
     }
 
-    // s: save — only on active profile
-    if (input === "s") {
-      if (currentList.length === 0) return;
-      const profile = currentList[currentCursor];
-      if (!profile?.active) {
-        showStatus("Can only save on the active profile");
-        return;
-      }
-      if (focusColumn === "claude") {
-        handleRefreshToken();
-      } else {
-        showStatus("Codex manages token refresh internally");
-      }
-      return;
-    }
-
     if (input === "f") {
       refresh();
       codexRefresh();
@@ -230,10 +184,6 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
       return;
     }
 
-    if (input === "r") {
-      handleRefreshToken();
-      return;
-    }
   });
 
   // --- Render helpers ---
@@ -373,8 +323,6 @@ export function ProfilesPage({ machine, onBack, onAction }: Props) {
           <Text color={theme.overlay1}>{"\u21B5"}</Text> switch
           {" \u00b7 "}
           <Text color={theme.overlay1}>l</Text> login
-          {" \u00b7 "}
-          <Text color={theme.overlay1}>r</Text> refresh
           {" \u00b7 "}
           <Text color={theme.overlay1}>n</Text> next
           {" \u00b7 "}

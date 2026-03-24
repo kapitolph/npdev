@@ -11,6 +11,7 @@ CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 ACCOUNT_FILE="${ACCOUNT_FILE:-$HOME/.claude.json}"
 REGISTRY="${REGISTRY:-$HOME/.vps/sessions.yaml}"
 ACTIVE_PROFILE_FILE="${ACTIVE_PROFILE_FILE:-$HOME/.claude/.active-profile}"
+ACTIVE_TOKEN_FILE="${ACTIVE_TOKEN_FILE:-$HOME/.claude/.active-token}"
 
 # ─── JSON mode ────────────────────────────────────────────────────────────────
 JSON_MODE=false
@@ -103,6 +104,17 @@ auto_save_current() {
   chmod 600 "$DEVELOPERS_DIR/${current}.claude-credentials.json"
   jq '{userID, oauthAccount}' "$ACCOUNT_FILE" > "$DEVELOPERS_DIR/${current}.claude-account.json"
   chmod 600 "$DEVELOPERS_DIR/${current}.claude-account.json"
+
+  # If CLAUDE_CODE_OAUTH_TOKEN is set, update the saved profile's accessToken
+  if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+    local saved_creds="$DEVELOPERS_DIR/${current}.claude-credentials.json"
+    if [[ -f "$saved_creds" ]]; then
+      local tmp
+      tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$saved_creds")
+      printf '%s' "$tmp" > "$saved_creds"
+      chmod 600 "$saved_creds"
+    fi
+  fi
 }
 
 # Check token expiry. Returns: "valid (Xd)", "expired", or "unknown"
@@ -206,6 +218,14 @@ HELP
   cp "$CREDENTIALS_FILE" "$dest_creds"
   chmod 600 "$dest_creds"
 
+  # If CLAUDE_CODE_OAUTH_TOKEN is set, update the saved credentials with it
+  if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+    local tmp
+    tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$dest_creds")
+    printf '%s' "$tmp" > "$dest_creds"
+    chmod 600 "$dest_creds"
+  fi
+
   # Extract account fields
   jq '{userID, oauthAccount}' "$ACCOUNT_FILE" > "$dest_acct"
   chmod 600 "$dest_acct"
@@ -232,6 +252,14 @@ HELP
   fi
 
   set_active_profile "$name"
+
+  # Write active token for env var consumption
+  local saved_token
+  saved_token=$(jq -r '.claudeAiOauth.accessToken // empty' "$dest_creds" 2>/dev/null)
+  if [[ -n "$saved_token" ]]; then
+    printf '%s' "$saved_token" > "$ACTIVE_TOKEN_FILE"
+    chmod 600 "$ACTIVE_TOKEN_FILE"
+  fi
 
   if $JSON_MODE; then
     jq -n --arg profile "$name" --arg email "$email" \
@@ -301,6 +329,14 @@ HELP
 
   # Track active profile
   set_active_profile "$name"
+
+  # Write active token for env var consumption
+  local token
+  token=$(jq -r '.claudeAiOauth.accessToken // empty' "$src_creds" 2>/dev/null)
+  if [[ -n "$token" ]]; then
+    printf '%s' "$token" > "$ACTIVE_TOKEN_FILE"
+    chmod 600 "$ACTIVE_TOKEN_FILE"
+  fi
 
   local email
   email=$(saved_email "$name")
@@ -466,144 +502,6 @@ On VPS, only --token login is supported. For browser-based OAuth, run:
   fi
 }
 
-cmd_refresh() {
-  if wants_help "$@"; then
-    cat <<'HELP'
-ccp refresh — Refresh an OAuth token using the stored refresh token
-
-Usage: ccp refresh [name] [--force]
-
-Arguments:
-  [name]    Developer name (defaults to active profile)
-  --force   Refresh even if current token has >2h remaining
-
-Exchanges the stored refresh token for a new access token via the
-Claude OAuth endpoint. Skips the request if the token still has more
-than 2 hours of validity (to avoid rate limits). Updates both the
-saved profile and live credentials (if this is the active profile).
-HELP
-    return
-  fi
-
-  local name="${1:-}"
-
-  # If no name given, use active profile
-  if [[ -z "$name" ]]; then
-    name=$(current_profile)
-    [[ -z "$name" ]] && die "No active profile. Specify a name: ccp refresh <name>"
-  fi
-
-  validate_dev "$name"
-
-  local creds_file="$DEVELOPERS_DIR/${name}.claude-credentials.json"
-  [[ -f "$creds_file" ]] || die "No saved credentials for '$name'. Run: ccp login $name"
-
-  local refresh_token
-  refresh_token=$(jq -r '.claudeAiOauth.refreshToken // empty' "$creds_file" 2>/dev/null)
-  [[ -z "$refresh_token" ]] && die "No refresh token found for '$name'. Run: ccp login $name"
-
-  # Skip refresh if token is still valid with >1 day remaining (avoid rate limits)
-  local force="${2:-}"
-  if [[ "$force" != "--force" ]]; then
-    local expires_at
-    expires_at=$(jq -r '.claudeAiOauth.expiresAt // empty' "$creds_file" 2>/dev/null)
-    if [[ -n "$expires_at" ]]; then
-      local now_ms
-      now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
-      local remaining_s=$(( (expires_at - now_ms) / 1000 ))
-      if (( remaining_s > 7200 )); then
-        local days=$(( remaining_s / 86400 ))
-        local hours=$(( (remaining_s % 86400) / 3600 ))
-        if $JSON_MODE; then
-          local remaining_label
-          if (( days > 0 )); then remaining_label="${days}d"; else remaining_label="${hours}h"; fi
-          jq -n --arg profile "$name" --arg token_status "valid (${remaining_label})" \
-            '{"ok":true,"action":"skipped","profile":$profile,"token_status":$token_status,"message":"Token still valid — use --force to refresh anyway"}'
-        else
-          local remaining_label
-          if (( days > 0 )); then remaining_label="${days}d"; else remaining_label="${hours}h"; fi
-          echo "Token for '$name' still valid (${remaining_label} remaining) — skipping. Use --force to refresh anyway."
-        fi
-        return 0
-      fi
-    fi
-  fi
-
-  local CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-  local TOKEN_URL="https://platform.claude.com/v1/oauth/token"
-
-  $JSON_MODE || echo "Refreshing token for '$name'..."
-
-  local response
-  response=$(curl -sS -X POST "$TOKEN_URL" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n \
-      --arg rt "$refresh_token" \
-      --arg client_id "$CLIENT_ID" \
-      '{
-        grant_type: "refresh_token",
-        refresh_token: $rt,
-        client_id: $client_id
-      }')" 2>&1)
-
-  # Check for error
-  if ! echo "$response" | jq -e '.access_token' >/dev/null 2>&1; then
-    local err_msg
-    err_msg=$(echo "$response" | jq -r '.error_description // .error // "Unknown error"' 2>/dev/null || echo "$response")
-    die "Token refresh failed: $err_msg"
-  fi
-
-  # Extract tokens
-  local access_token new_refresh_token expires_in
-  access_token=$(echo "$response" | jq -r '.access_token')
-  new_refresh_token=$(echo "$response" | jq -r '.refresh_token // empty')
-  expires_in=$(echo "$response" | jq -r '.expires_in // 86400')
-
-  # Keep the old refresh token if the server didn't issue a new one
-  [[ -z "$new_refresh_token" ]] && new_refresh_token="$refresh_token"
-
-  # Calculate expiry timestamp in milliseconds
-  local now_ms expires_at
-  now_ms=$(date +%s%3N 2>/dev/null || echo "$(($(date +%s) * 1000))")
-  expires_at=$((now_ms + expires_in * 1000))
-
-  # Build credentials JSON
-  local creds
-  creds=$(jq -n \
-    --arg at "$access_token" \
-    --arg rt "$new_refresh_token" \
-    --argjson ea "$expires_at" \
-    '{
-      claudeAiOauth: {
-        accessToken: $at,
-        refreshToken: $rt,
-        expiresAt: $ea
-      }
-    }')
-
-  # Write to saved profile
-  printf '%s' "$creds" | jq . > "$creds_file"
-  chmod 600 "$creds_file"
-
-  # If this is the active profile, also update live credentials
-  local current
-  current=$(current_profile)
-  if [[ "$current" == "$name" ]]; then
-    printf '%s' "$creds" | jq . > "$CREDENTIALS_FILE"
-    chmod 600 "$CREDENTIALS_FILE"
-  fi
-
-  local status
-  status=$(token_status "$creds_file")
-
-  if $JSON_MODE; then
-    jq -n --arg profile "$name" --arg token_status "$status" \
-      '{"ok":true,"action":"refreshed","profile":$profile,"token_status":$token_status}'
-  else
-    echo "Refreshed token for '$name' — $status"
-  fi
-}
-
 cmd_logout() {
   if wants_help "$@"; then
     cat <<'HELP'
@@ -640,12 +538,13 @@ HELP
 
   rm -f "$creds_file" "$acct_file"
 
-  # If this was the active profile, clear the active state and live credentials
+  # If this was the active profile, clear the active state, live credentials, and active token
   local current
   current=$(current_profile)
   if [[ "$current" == "$name" ]]; then
     rm -f "$ACTIVE_PROFILE_FILE"
     rm -f "$CREDENTIALS_FILE"
+    rm -f "$ACTIVE_TOKEN_FILE"
   fi
 
   if $JSON_MODE; then
@@ -866,7 +765,6 @@ cmd_help() {
       {"name":"login","usage":"ccp login <name> --token <token>","description":"Save token to profile"},
       {"name":"import","usage":"ccp import <name>","description":"Import credentials from stdin JSON"},
       {"name":"save","usage":"ccp save <name>","description":"Save current credentials to a profile"},
-      {"name":"refresh","usage":"ccp refresh [name] [--force]","description":"Refresh token (skips if >1d remaining, --force to override)"},
       {"name":"logout","usage":"ccp logout [name]","description":"Remove saved credentials for a profile"},
       {"name":"help","usage":"ccp help","description":"Show help"}
     ]}'
@@ -887,7 +785,6 @@ Commands:
   next          Cycle to next saved profile
   login <name> --token <token>  Save token to profile
   import <name> Import credentials from stdin JSON
-  refresh [name] [--force]  Refresh token (skips if >1d left, --force overrides)
   logout [name] Remove saved credentials (default: active profile)
   save <name>   Save current credentials to a profile
   whoami        Show current profile details
@@ -935,7 +832,6 @@ case "${1:-}" in
   whoami)       shift; cmd_whoami "$@" ;;
   login)        shift; cmd_login "$@" ;;
   import)       shift; cmd_import "$@" ;;
-  refresh)      shift; cmd_refresh "$@" ;;
   logout)       shift; cmd_logout "$@" ;;
   save)         shift; cmd_save "$@" ;;
   use|switch)   shift; cmd_use "$@" ;;
