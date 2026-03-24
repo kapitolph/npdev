@@ -87,23 +87,6 @@ set_active_profile() {
   printf '%s' "$name" > "$ACTIVE_PROFILE_FILE"
 }
 
-# Auto-save current env var token back to the active profile before switching.
-auto_save_current() {
-  [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] || return 0
-
-  local current
-  current=$(current_profile)
-  [[ -z "$current" ]] && return 0
-
-  local saved_creds="$DEVELOPERS_DIR/${current}.claude-credentials.json"
-  [[ -f "$saved_creds" ]] || return 0
-
-  local tmp
-  tmp=$(jq --arg tok "$CLAUDE_CODE_OAUTH_TOKEN" '.claudeAiOauth.accessToken = $tok' "$saved_creds")
-  printf '%s' "$tmp" > "$saved_creds"
-  chmod 600 "$saved_creds"
-}
-
 # Check token expiry. Returns: "valid (Xd)", "expired", or "unknown"
 token_status() {
   local creds_file="$1"
@@ -264,9 +247,6 @@ HELP
 
   # Warn about active sessions
   check_active_sessions "$name"
-
-  # Auto-save current env var token back to outgoing profile
-  auto_save_current
 
   # Check token expiry and warn
   local status
