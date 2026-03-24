@@ -206,6 +206,8 @@ cmd_save() {
     done
   fi
 
+  set_active_profile "$name"
+
   if $JSON_MODE; then
     jq -n --arg profile "$name" --arg email "$email" \
       '{"ok":true,"action":"saved","profile":$profile,"email":$email}'
@@ -623,6 +625,27 @@ cmd_list() {
 cmd_whoami() {
   local current
   current=$(current_profile)
+
+  if [[ -z "$current" ]]; then
+    # Try to find matching profile by email before giving up
+    if [[ -f "$ACCOUNT_FILE" ]]; then
+      local live_email
+      live_email=$(jq -r '.oauthAccount.emailAddress // empty' "$ACCOUNT_FILE" 2>/dev/null)
+      if [[ -n "$live_email" ]]; then
+        for env_file in "$DEVELOPERS_DIR"/*.env; do
+          local pname
+          pname=$(basename "$env_file" .env)
+          local saved
+          saved=$(saved_email "$pname")
+          if [[ "$saved" == "$live_email" ]]; then
+            current="$pname"
+            set_active_profile "$current"
+            break
+          fi
+        done
+      fi
+    fi
+  fi
 
   if [[ -z "$current" ]]; then
     if $JSON_MODE; then
