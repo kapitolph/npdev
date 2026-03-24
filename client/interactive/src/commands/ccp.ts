@@ -113,9 +113,9 @@ async function localOAuthLogin(
   console.log("Backing up local Claude credentials...");
   backupLocalCreds();
 
-  // 3. Run `claude auth login` locally (auth-only, no workspace trust prompt)
-  console.log("Starting Claude login (browser will open)...");
-  const loginProc = Bun.spawn(["claude", "auth", "login"], {
+  // 3. Run `claude setup-token` locally (long-lived OAuth token)
+  console.log("Starting Claude setup-token (browser will open)...");
+  const loginProc = Bun.spawn(["claude", "setup-token"], {
     stdout: "inherit",
     stderr: "inherit",
     stdin: "inherit",
