@@ -318,12 +318,11 @@ cmd_logout() {
 
   rm -f "$auth_file"
 
-  # If this was the active profile, clear the active state and live auth file
+  # If this was the active profile, clear the active state (but leave global auth.json intact)
   local current
   current=$(current_profile)
   if [[ "$current" == "$name" ]]; then
     rm -f "$ACTIVE_PROFILE_FILE"
-    rm -f "$AUTH_FILE"
   fi
 
   if $JSON_MODE; then
