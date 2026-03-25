@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Worker for claude-login-proxy.sh — runs `claude auth login` inside a PTY
-using pexpect. Captures the OAuth URL and waits for the process to complete
-(claude polls the server automatically after the user authenticates in browser).
+using pexpect. Captures the OAuth URL, waits for the auth code to be
+submitted via code.txt, feeds it to the CLI, and waits for completion.
 
 Usage: claude-login-worker.py <sess_dir> [email]
 """
@@ -22,6 +22,7 @@ def main():
 
     output_log = os.path.join(sess_dir, "output.log")
     url_file = os.path.join(sess_dir, "url.txt")
+    code_file = os.path.join(sess_dir, "code.txt")
     status_file = os.path.join(sess_dir, "worker_status")
 
     # Build the command
@@ -49,8 +50,27 @@ def main():
                 f.write("error")
             return
 
-        # Wait for claude to finish (it polls the server for auth completion)
-        child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=TIMEOUT)
+        # Poll for the auth code (written by proxy's submit command)
+        code = None
+        deadline = time.time() + TIMEOUT
+        while time.time() < deadline:
+            if os.path.exists(code_file):
+                with open(code_file, "r") as f:
+                    code = f.read().strip()
+                if code:
+                    break
+            time.sleep(0.5)
+
+        if not code:
+            with open(status_file, "w") as f:
+                f.write("error")
+            return
+
+        # Feed the code to claude auth login
+        child.sendline(code)
+
+        # Wait for the CLI to finish
+        child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=60)
         child.close()
 
         with open(status_file, "w") as f:

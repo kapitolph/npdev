@@ -32,7 +32,8 @@ case "${1:-}" in
     mkdir -p "$SESS_DIR"
 
     # Launch the pexpect worker in background
-    python3 "$(dirname "$0")/claude-login-worker.py" "$SESS_DIR" "$EMAIL" &
+    # Redirect stdout/stderr so command substitution ($()) doesn't block waiting for the worker
+    python3 "$(dirname "$0")/claude-login-worker.py" "$SESS_DIR" "$EMAIL" >/dev/null 2>&1 &
     WORKER_PID=$!
     echo "$WORKER_PID" > "$SESS_DIR/worker_pid"
 
