@@ -85,7 +85,7 @@ Codex Profiles:
 Setup & Maintenance:
   npdev setup                     Set up developer identity (git + GitHub)
   npdev sync-keys                 Sync keys/*.pub from GitHub to VPS
-  npdev update [--nightly]        Update npdev binary + machine list
+  npdev update [--nightly] [--force]  Update npdev binary + machine list
   npdev spec --json               Show agent-facing CLI contract
   npdev spec command <path> --json
                                   Show one command contract
@@ -246,12 +246,13 @@ Interactive setup for developer identity. Configures:
 Fetch SSH public keys from the GitHub repo and add any new ones
 to ~/.ssh/authorized_keys on the VPS.`,
 
-  update: `npdev update [--nightly]
+  update: `npdev update [--nightly] [--force]
 
 Update the npdev binary and machines.yaml from the latest GitHub release.
 
 Flags:
-  --nightly    Install the latest nightly pre-release instead of stable`,
+  --nightly    Install the latest nightly pre-release instead of stable
+  --force      Download even if already at the latest version`,
 
   summaries: `npdev summaries <list|latest|get|generate> [flags]
 
@@ -455,7 +456,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
   if (command === "update") {
-    await cmdUpdate({ nightly: flags.nightly, target: flags.target });
+    await cmdUpdate({ nightly: flags.nightly, target: flags.target, force: remaining.includes("--force") });
     process.exit(0);
   }
   if (command === "setup") {

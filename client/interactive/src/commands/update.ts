@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { MACHINES_FILE, npdevDir } from "../lib/config";
+import { NPDEV_VERSION, isNewer } from "../lib/version";
 
 const GITHUB_REPO = "kapitolph/npdev";
 
@@ -25,6 +26,7 @@ exit $exit_code
 interface UpdateOptions {
   nightly?: boolean;
   target?: string;
+  force?: boolean;
 }
 
 async function findLatestNightlyTag(): Promise<string | null> {
@@ -124,6 +126,14 @@ export async function cmdUpdate(options: UpdateOptions = {}): Promise<void> {
       }
     } catch {
       // continue with "unknown"
+    }
+  }
+
+  // Skip if already up to date (unless --force or pinned version)
+  if (!options.force && !options.target && newVersion !== "unknown") {
+    if (newVersion === NPDEV_VERSION || !isNewer(newVersion, NPDEV_VERSION)) {
+      p.outro(`npdev is already at v${NPDEV_VERSION} — up to date`);
+      return;
     }
   }
 
